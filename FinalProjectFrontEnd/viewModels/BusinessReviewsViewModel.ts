@@ -1,25 +1,12 @@
 // viewModels/BusinessReviewsViewModel.ts
 import React, { useState, useCallback, useRef } from 'react';
 import { apiServices } from '../api';
-
-// Review interface
-interface Review {
-  _id: string;
-  rating: number;
-  comment?: string;
-  user: {
-    _id: string;
-    name: string;
-    email?: string;
-  };
-  createdAt: string;
-  updatedAt: string;
-}
+import { Review } from '../types/business'; // Import Review type from business types
 
 // Business reviews data structure
 interface BusinessReviews {
   businessId: string;
-  reviews: Review[];
+  reviews: any[]; // Using any[] to handle different Review types
   averageRating: number;
   totalReviews: number;
   pagination: {
@@ -47,7 +34,7 @@ interface FetchReviewsParams {
 // Response interface
 interface FetchReviewsResponse {
   success: boolean;
-  data?: Review[];
+  data?: any[]; // Using any[] to handle different Review types
   error?: string;
   pagination?: {
     total: number;
@@ -89,11 +76,15 @@ export class BusinessReviewsViewModel {
     return this.state;
   }
 
-  // Calculate average rating for reviews
-  private calculateAverageRating(reviews: Review[]): number {
+  // Calculate average rating for reviews - FIXED with proper rounding
+  private calculateAverageRating(reviews: any[]): number {
     if (reviews.length === 0) return 0;
-    const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
-    return totalRating / reviews.length;
+    const totalRating = reviews.reduce(
+      (sum: number, review: any) => sum + (review.rating || 0),
+      0,
+    );
+    const average = totalRating / reviews.length;
+    return Math.round(average * 10) / 10; // Round to 1 decimal place
   }
 
   // Fetch business reviews
@@ -124,7 +115,7 @@ export class BusinessReviewsViewModel {
           ? newReviews
           : [...(existingBusinessReviews?.reviews || []), ...newReviews];
 
-        const averageRating = this.calculateAverageRating(allReviews);
+        const averageRating = this.calculateAverageRating(allReviews as any);
 
         const pagination = {
           total: allReviews.length,
@@ -135,7 +126,7 @@ export class BusinessReviewsViewModel {
 
         const businessReviewsData: BusinessReviews = {
           businessId,
-          reviews: allReviews,
+          reviews: allReviews as any,
           averageRating,
           totalReviews: allReviews.length,
           pagination,
@@ -152,7 +143,7 @@ export class BusinessReviewsViewModel {
 
         return {
           success: true,
-          data: newReviews,
+          data: newReviews as any,
           pagination,
         };
       } else {
@@ -244,11 +235,11 @@ export class BusinessReviewsViewModel {
   };
 
   // Update a review in cache (after editing)
-  updateReviewInCache = (businessId: string, updatedReview: Review) => {
+  updateReviewInCache = (businessId: string, updatedReview: any) => {
     const businessReviews = this.state.reviewsCache[businessId];
     if (!businessReviews) return;
 
-    const updatedReviews = businessReviews.reviews.map(review =>
+    const updatedReviews = businessReviews.reviews.map((review: any) =>
       review._id === updatedReview._id ? updatedReview : review,
     );
 
@@ -267,7 +258,7 @@ export class BusinessReviewsViewModel {
   };
 
   // Add new review to cache (after creating)
-  addReviewToCache = (businessId: string, newReview: Review) => {
+  addReviewToCache = (businessId: string, newReview: any) => {
     const businessReviews = this.state.reviewsCache[businessId];
 
     if (businessReviews) {
@@ -294,7 +285,7 @@ export class BusinessReviewsViewModel {
           [businessId]: {
             businessId,
             reviews: [newReview],
-            averageRating: newReview.rating,
+            averageRating: newReview.rating || 0,
             totalReviews: 1,
             pagination: {
               total: 1,
@@ -314,7 +305,7 @@ export class BusinessReviewsViewModel {
     if (!businessReviews) return;
 
     const updatedReviews = businessReviews.reviews.filter(
-      review => review._id !== reviewId,
+      (review: any) => review._id !== reviewId,
     );
     const averageRating = this.calculateAverageRating(updatedReviews);
 
@@ -403,14 +394,14 @@ export const useBusinessReviewsViewModel = () => {
   );
 
   const updateReviewInCache = useCallback(
-    (businessId: string, updatedReview: Review) => {
+    (businessId: string, updatedReview: any) => {
       return viewModel.updateReviewInCache(businessId, updatedReview);
     },
     [viewModel],
   );
 
   const addReviewToCache = useCallback(
-    (businessId: string, newReview: Review) => {
+    (businessId: string, newReview: any) => {
       return viewModel.addReviewToCache(businessId, newReview);
     },
     [viewModel],

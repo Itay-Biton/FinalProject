@@ -1,5 +1,13 @@
+// components/Cards/BusinessCard.tsx
+
 import React, { memo, useCallback } from 'react';
-import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  I18nManager,
+  Platform,
+} from 'react-native';
 import { useTheme, Text, Card, Chip, Divider } from 'react-native-paper';
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import { useTranslation } from 'react-i18next';
@@ -110,6 +118,7 @@ interface BusinessCardProps {
   onEmail: (email: string) => void;
   onRate: (businessId: string, businessName: string) => void;
   onNavigate?: (businessId: string, businessName: string) => void;
+  onViewReviews: (businessId: string, businessName: string) => void;
 }
 
 const BusinessCard: React.FC<BusinessCardProps> = memo(
@@ -122,6 +131,7 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
     onEmail,
     onRate,
     onNavigate,
+    onViewReviews,
   }) => {
     const { colors }: { colors: ThemeColors } = useTheme();
     const { t } = useTranslation();
@@ -134,24 +144,24 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
       for (let i = 0; i < fullStars; i++) {
         stars.push(<StarIcon key={`full-${i}`} color="#FFD700" filled />);
       }
-
       if (hasHalfStar) {
         stars.push(<StarIcon key="half" color="#FFD700" filled />);
       }
-
       const emptyStars = 5 - Math.ceil(rating);
       for (let i = 0; i < emptyStars; i++) {
         stars.push(<StarIcon key={`empty-${i}`} color="#FFD700" />);
       }
-
       return stars;
     }, []);
+
+    const handleViewReviews = useCallback(() => {
+      onViewReviews(business.id, business.name);
+    }, [business.id, business.name, onViewReviews]);
 
     const handleNavigate = useCallback(() => {
       if (onNavigate) {
         onNavigate(business.id, business.name);
       } else {
-        // Default behavior - you can implement navigation logic here
         onRate(business.id, business.name);
       }
     }, [business.id, business.name, onNavigate, onRate]);
@@ -159,8 +169,8 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
     const styles = createStyles(colors);
 
     return (
-      <Card key={business.id} style={styles.businessCard} mode="outlined">
-        {/* Full-width Image Slider */}
+      <Card style={styles.businessCard} mode="outlined">
+        {/* Image Slider */}
         <View style={styles.imageSliderContainer}>
           <BusinessImageSlider
             images={business.images}
@@ -172,7 +182,7 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
         </View>
 
         <Card.Content style={styles.cardContent}>
-          {/* Business Header */}
+          {/* Header */}
           <View style={styles.businessHeader}>
             <View style={styles.businessTitleContainer}>
               <Text style={styles.businessName} numberOfLines={2}>
@@ -186,7 +196,6 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
                     </View>
                   )}
                 </View>
-
                 <View style={styles.statusContainer}>
                   <Chip
                     style={[
@@ -211,17 +220,37 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
             </View>
           </View>
 
-          {/* Rating */}
-          <View style={styles.ratingRow}>
+          {/* Rating / Reviews Row */}
+          <TouchableOpacity
+            style={styles.ratingRow}
+            onPress={handleViewReviews}
+            activeOpacity={0.7}
+          >
             <View style={styles.starsContainer}>
-              {renderStars(business.rating)}
+              {business.rating > 0 ? (
+                renderStars(business.rating)
+              ) : (
+                <Text style={styles.noRatingText}>{t('no_rating')}</Text>
+              )}
             </View>
-            <Text style={styles.ratingText}>
-              {business.rating} ({business.reviewCount} {t('reviews')})
-            </Text>
-          </View>
+            <View style={styles.ratingTextContainer}>
+              {business.rating > 0 ? (
+                <Text style={styles.ratingText}>
+                  {Math.ceil(business.rating)} ({business.reviewCount}{' '}
+                  {t('reviews')})
+                </Text>
+              ) : (
+                <Text style={styles.ratingText}>{t('no_reviews_yet')}</Text>
+              )}
+              <Text style={styles.viewReviewsHint}>
+                {business.reviewCount > 0
+                  ? t('tap_to_view_reviews')
+                  : t('be_the_first_to_review')}
+              </Text>
+            </View>
+          </TouchableOpacity>
 
-          {/* Business Info Grid */}
+          {/* Info Grid */}
           <View style={styles.businessInfoGrid}>
             <View style={styles.infoItem}>
               <LocationIcon color={colors.primary} />
@@ -229,14 +258,12 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
                 {business.location}
               </Text>
             </View>
-
             <View style={styles.infoItem}>
               <TimeIcon color={colors.primary} />
               <Text style={styles.infoText} numberOfLines={1}>
                 {business.workingHours}
               </Text>
             </View>
-
             <View style={styles.infoItem}>
               <EmailIcon color={colors.primary} />
               <Text style={styles.infoText} numberOfLines={1}>
@@ -266,7 +293,6 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
                   <Text style={styles.contactButtonText}>{t('call')}</Text>
                 </View>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.contactButton}
                 onPress={() => onEmail(business.email)}
@@ -276,7 +302,6 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
                   <Text style={styles.contactButtonText}>{t('email')}</Text>
                 </View>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.contactButton}
                 onPress={() => onRate(business.id, business.name)}
@@ -286,7 +311,6 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
                   <Text style={styles.contactButtonText}>{t('rate')}</Text>
                 </View>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.contactButton}
                 onPress={handleNavigate}
@@ -337,17 +361,17 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: moderateScale(20),
       fontWeight: '700',
       color: colors.primary,
-      textAlign: 'left',
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
       marginBottom: verticalScale(8),
     },
     businessMeta: {
-      flexDirection: 'row',
+      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
       alignItems: 'flex-start',
       justifyContent: 'space-between',
     },
     leftSection: {
       flexDirection: 'column',
-      alignItems: 'flex-start',
+      alignItems: I18nManager.isRTL ? 'flex-end' : 'flex-start',
     },
     verifiedBadge: {
       backgroundColor: '#4CAF50' + '15',
@@ -360,12 +384,13 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: moderateScale(11),
       color: '#4CAF50',
       fontWeight: '600',
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     statusContainer: {
-      alignItems: 'flex-end',
+      alignItems: I18nManager.isRTL ? 'flex-start' : 'flex-end',
     },
     statusChip: {
-      alignSelf: 'flex-end',
+      alignSelf: I18nManager.isRTL ? 'flex-start' : 'flex-end',
       marginBottom: verticalScale(4),
     },
     openStatusChip: {
@@ -388,34 +413,66 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: moderateScale(12),
       color: colors.rangeTextColor,
       fontWeight: '500',
-      textAlign: 'right',
+      textAlign: I18nManager.isRTL ? 'left' : 'right',
     },
     ratingRow: {
-      flexDirection: 'row',
+      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
       alignItems: 'center',
       marginBottom: verticalScale(16),
+      backgroundColor: colors.background,
+      padding: scale(12),
+      borderRadius: moderateScale(8),
+      borderWidth: 1,
+      borderColor: colors.outline + '30',
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+      elevation: 1,
     },
     starsContainer: {
       flexDirection: 'row',
-      marginRight: scale(8),
+      marginRight: I18nManager.isRTL ? 0 : scale(8),
+      marginLeft: I18nManager.isRTL ? scale(8) : 0,
+    },
+    ratingTextContainer: {
+      flex: 1,
     },
     ratingText: {
       fontSize: moderateScale(14),
       color: colors.onSurfaceVariant,
+      fontWeight: '500',
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
+    },
+    noRatingText: {
+      fontSize: moderateScale(14),
+      color: colors.onSurfaceVariant,
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
+      fontStyle: 'italic',
+    },
+    viewReviewsHint: {
+      fontSize: moderateScale(12),
+      color: colors.primary,
+      marginTop: verticalScale(2),
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
+      fontWeight: '500',
+      opacity: 0.8,
     },
     businessInfoGrid: {
       marginBottom: verticalScale(16),
     },
     infoItem: {
-      flexDirection: 'row',
+      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
       alignItems: 'center',
       marginBottom: verticalScale(8),
     },
     infoText: {
       fontSize: moderateScale(14),
       color: colors.onSurface,
-      marginLeft: scale(8),
+      marginLeft: I18nManager.isRTL ? 0 : scale(8),
+      marginRight: I18nManager.isRTL ? scale(8) : 0,
       flex: 1,
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     descriptionContainer: {
       backgroundColor: colors.background,
@@ -428,6 +485,7 @@ const createStyles = (colors: ThemeColors) =>
       color: colors.onSurface,
       lineHeight: verticalScale(20),
       fontStyle: 'italic',
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     divider: {
       marginVertical: verticalScale(12),
@@ -437,13 +495,14 @@ const createStyles = (colors: ThemeColors) =>
       marginTop: verticalScale(8),
     },
     contactButtons: {
-      flexDirection: 'row',
+      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
       justifyContent: 'space-between',
       flexWrap: 'wrap',
     },
     contactButton: {
       flex: 1,
-      marginRight: scale(4),
+      marginRight: I18nManager.isRTL ? 0 : scale(4),
+      marginLeft: I18nManager.isRTL ? scale(4) : 0,
       marginBottom: verticalScale(8),
       minWidth: scale(90),
       borderRadius: moderateScale(8),
@@ -452,7 +511,7 @@ const createStyles = (colors: ThemeColors) =>
       backgroundColor: colors.buttonColor,
     },
     contactButtonContent: {
-      flexDirection: 'row',
+      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -460,7 +519,8 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: moderateScale(14),
       fontWeight: '600',
       color: colors.buttonTextColor,
-      marginLeft: scale(6),
+      marginLeft: I18nManager.isRTL ? 0 : scale(6),
+      marginRight: I18nManager.isRTL ? scale(6) : 0,
     },
   });
 

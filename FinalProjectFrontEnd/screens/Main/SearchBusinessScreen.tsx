@@ -1,4 +1,4 @@
-// Updated SearchBusinessScreen.tsx with RatingModal integration
+// SearchBusinessScreen.tsx - Complete Fixed Version
 
 import React, {
   useState,
@@ -19,6 +19,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   FlatList,
+  I18nManager,
 } from 'react-native';
 import { useTheme, Text, IconButton } from 'react-native-paper';
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
@@ -31,6 +32,7 @@ import CustomInputText from '../../components/UI/CustomInputText';
 import PhoneNumberPickerModal from '../../components/Modals/PhoneNumberPickerModal';
 import AlertModal from '../../components/Modals/AlertModal';
 import RatingModal from '../../components/Modals/RatingModal';
+import ReviewsModal from '../../components/Modals/ReviewsModal'; // Fixed import
 import SnakeSlider from '../../components/UI/SnakeSlider';
 import { RouteMapModal } from '../../components/Modals/RouteMapModal';
 
@@ -40,8 +42,9 @@ import { useLocationPermission } from '../../utils/LocationPermissions';
 // Constants
 import { getServiceTypesList } from '../../constants/serviceTypesList';
 
-// ViewModel
+// ViewModels
 import { useBusinessSearchViewModel } from '../../viewModels/BusinessSearchViewModel';
+import { useBusinessReviewsViewModel } from '../../viewModels/BusinessReviewsViewModel'; // Fixed import
 
 // API Services
 import { apiServices } from '../../api';
@@ -122,7 +125,7 @@ const SearchBusinessScreen: React.FC = memo(() => {
     [width, height, colors],
   );
 
-  // ViewModel
+  // ViewModels
   const {
     businesses,
     loading,
@@ -137,6 +140,14 @@ const SearchBusinessScreen: React.FC = memo(() => {
     getFilters,
     clearSearch,
   } = useBusinessSearchViewModel();
+
+  // Reviews ViewModel - FIXED
+  const {
+    reviewsCache,
+    fetchBusinessReviews,
+    getBusinessRating,
+    refreshBusinessReviews,
+  } = useBusinessReviewsViewModel();
 
   // State management
   const [searchQuery, setSearchQuery] = useState('');
@@ -156,6 +167,14 @@ const SearchBusinessScreen: React.FC = memo(() => {
   // Rating modal state
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [selectedBusinessForRating, setSelectedBusinessForRating] =
+    useState<null | {
+      id: string;
+      name: string;
+    }>(null);
+
+  // Reviews modal state - FIXED
+  const [showReviewsModal, setShowReviewsModal] = useState(false);
+  const [selectedBusinessForReviews, setSelectedBusinessForReviews] =
     useState<null | {
       id: string;
       name: string;
@@ -212,7 +231,7 @@ const SearchBusinessScreen: React.FC = memo(() => {
   // FlatList ref for scroll control
   const flatListRef = useRef<FlatList>(null);
 
-  // Load initial data
+  // Load initial data and fetch reviews for each business
   useEffect(() => {
     searchBusinesses(true);
   }, [searchBusinesses]);
@@ -280,6 +299,18 @@ const SearchBusinessScreen: React.FC = memo(() => {
     setShowRatingModal(true);
   }, []);
 
+  const handleViewReviews = useCallback(
+    async (businessId: string, businessName: string) => {
+      // fetch only if we don't already have page 1 cached
+      if (!reviewsCache[businessId]) {
+        await fetchBusinessReviews(businessId, { limit: 10, offset: 0 });
+      }
+      setSelectedBusinessForReviews({ id: businessId, name: businessName });
+      setShowReviewsModal(true);
+    },
+    [fetchBusinessReviews, reviewsCache],
+  );
+
   // Handle rating submission
   const handleRatingSubmit = useCallback(
     async (businessId: string, rating: number, comment?: string) => {
@@ -303,8 +334,8 @@ const SearchBusinessScreen: React.FC = memo(() => {
             buttons: [{ text: t('ok'), style: 'default' }],
           });
 
-          // Optionally refresh the business list to show updated ratings
-          // refreshBusinesses();
+          // Refresh reviews for this business
+          refreshBusinessReviews(businessId);
         } else {
           throw new Error(response.error || 'Failed to submit rating');
         }
@@ -319,13 +350,20 @@ const SearchBusinessScreen: React.FC = memo(() => {
         });
       }
     },
-    [t],
+    [t, refreshBusinessReviews],
   );
 
   // Close rating modal
   const handleCloseRatingModal = useCallback(() => {
     setShowRatingModal(false);
     setSelectedBusinessForRating(null);
+  }, []);
+
+  // FIXED Close reviews modal
+  const handleCloseReviewsModal = useCallback(() => {
+    console.log('Closing reviews modal');
+    setShowReviewsModal(false);
+    setSelectedBusinessForReviews(null);
   }, []);
 
   // Updated handleNavigate function to use stored user location
@@ -503,21 +541,23 @@ const SearchBusinessScreen: React.FC = memo(() => {
     [],
   );
 
-  // Convert Business to BusinessCard format
+  // Convert Business to BusinessCard format with actual review data - FIXED
   const convertBusinessForCard = useCallback(
     (business: Business) => {
+      const reviewData = getBusinessRating(business._id);
+
       return {
         id: business._id,
         name: business.name,
         serviceType: business.serviceType,
-        rating: 0, // Note: Rating not in Business type, may need to fetch separately
-        reviewCount: 0, // Note: Review count not in Business type
-        email: business.email || '', // Handle optional email
+        rating: reviewData.rating, // Now using actual review data
+        reviewCount: reviewData.count, // Now using actual review data
+        email: business.email || '',
         phoneNumbers: business.phoneNumbers,
         location: business.location.address,
         latitude: business.location.coordinates.coordinates[1], // GeoJSON: [lng, lat]
         longitude: business.location.coordinates.coordinates[0],
-        distance: business.distance || t('distance_not_available'), // ✅ Fix: Handle undefined distance
+        distance: business.distance || t('distance_not_available'),
         workingHours: business.workingHours
           .map(
             wh =>
@@ -529,13 +569,13 @@ const SearchBusinessScreen: React.FC = memo(() => {
           )
           .join(', '),
         images: business.images,
-        description: business.description || t('no_description_available'), // Handle optional description
+        description: business.description || t('no_description_available'),
         services: business.services,
         isOpen: business.isOpen,
         isVerified: business.isVerified,
       };
     },
-    [t],
+    [t, getBusinessRating],
   );
 
   const renderBusinessItem = useCallback(
@@ -551,6 +591,7 @@ const SearchBusinessScreen: React.FC = memo(() => {
           onEmail={handleEmail}
           onRate={handleRate}
           onNavigate={handleNavigate}
+          onViewReviews={handleViewReviews} // Fixed prop
         />
       );
     },
@@ -563,6 +604,7 @@ const SearchBusinessScreen: React.FC = memo(() => {
       handleEmail,
       handleRate,
       handleNavigate,
+      handleViewReviews, // Fixed dependency
     ],
   );
 
@@ -875,6 +917,17 @@ const SearchBusinessScreen: React.FC = memo(() => {
         onSubmit={handleRatingSubmit}
       />
 
+      {/* Reviews Modal - FIXED */}
+      {showReviewsModal && selectedBusinessForReviews && (
+        <ReviewsModal
+          visible={showReviewsModal}
+          onClose={handleCloseReviewsModal}
+          businessId={selectedBusinessForReviews.id}
+          businessName={selectedBusinessForReviews.name}
+          onFetchReviews={fetchBusinessReviews}
+        />
+      )}
+
       {/* Route Map Modal for Navigation */}
       {userLocation && navigationDestination && (
         <RouteMapModal
@@ -902,7 +955,7 @@ const SearchBusinessScreen: React.FC = memo(() => {
   );
 });
 
-// Styles remain the same as before
+// Styles remain the same as before with RTL support added
 const createStyles = (width: number, height: number, colors: ThemeColors) =>
   StyleSheet.create({
     container: {
@@ -912,7 +965,7 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       paddingHorizontal: scale(10),
     },
     header: {
-      flexDirection: 'row',
+      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
       alignItems: 'center',
       justifyContent: 'flex-end',
       paddingBottom: verticalScale(16),
@@ -935,7 +988,7 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       paddingBottom: verticalScale(20),
     },
     searchInputContainer: {
-      flexDirection: 'row',
+      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
       alignItems: 'center',
       paddingVertical: verticalScale(12),
       paddingHorizontal: scale(12),
@@ -949,13 +1002,13 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
     searchInputIconContainer: {
       width: moderateScale(20),
       height: moderateScale(20),
-      marginLeft: scale(12),
-      marginRight: scale(8),
+      marginLeft: I18nManager.isRTL ? scale(8) : scale(12),
+      marginRight: I18nManager.isRTL ? scale(12) : scale(8),
       justifyContent: 'center',
       alignItems: 'center',
     },
     dropdownItemContainer: {
-      flexDirection: 'row',
+      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
       alignItems: 'center',
       paddingVertical: verticalScale(12),
       paddingHorizontal: scale(16),
@@ -963,11 +1016,13 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
     dropdownItemIcon: {
       width: moderateScale(20),
       height: moderateScale(20),
-      marginRight: scale(12),
+      marginRight: I18nManager.isRTL ? 0 : scale(12),
+      marginLeft: I18nManager.isRTL ? scale(12) : 0,
     },
     dropdownItemText: {
       fontSize: moderateScale(16),
       color: colors.onSurface,
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     scrollView: {
       flex: 1,
@@ -984,6 +1039,7 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       fontWeight: '500',
       color: colors.primary,
       marginBottom: verticalScale(16),
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     loadingContainer: {
       flex: 1,
@@ -995,6 +1051,7 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       fontSize: moderateScale(16),
       color: colors.onSurfaceVariant,
       marginTop: verticalScale(12),
+      textAlign: 'center',
     },
     loadingFooter: {
       flexDirection: 'row',
@@ -1047,9 +1104,10 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       fontWeight: '600',
       color: colors.primary,
       marginBottom: verticalScale(12),
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     locationStatusCard: {
-      flexDirection: 'row',
+      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
       alignItems: 'center',
       padding: scale(12),
       backgroundColor: colors.background,
@@ -1061,18 +1119,22 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
     locationStatusText: {
       fontSize: moderateScale(14),
       color: colors.onSurface,
-      marginLeft: scale(8),
+      marginLeft: I18nManager.isRTL ? 0 : scale(8),
+      marginRight: I18nManager.isRTL ? scale(8) : 0,
       flex: 1,
       fontWeight: '500',
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     locationStatusSubtext: {
       fontSize: moderateScale(12),
       color: colors.onSurfaceVariant,
-      marginLeft: scale(8),
+      marginLeft: I18nManager.isRTL ? 0 : scale(8),
+      marginRight: I18nManager.isRTL ? scale(8) : 0,
       flex: 1,
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     locationMethodContainer: {
-      flexDirection: 'row',
+      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
       marginBottom: verticalScale(16),
       gap: scale(8),
     },
@@ -1090,6 +1152,7 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       fontSize: moderateScale(14),
       fontWeight: '500',
       color: colors.onSurface,
+      textAlign: 'center',
     },
     selectedLocationMethod: {
       borderColor: colors.buttonColor,
@@ -1112,7 +1175,7 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       opacity: 0.6,
     },
     locationButtonContent: {
-      flexDirection: 'row',
+      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -1120,7 +1183,8 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       fontSize: moderateScale(16),
       fontWeight: '600',
       color: colors.primary,
-      marginLeft: scale(8),
+      marginLeft: I18nManager.isRTL ? 0 : scale(8),
+      marginRight: I18nManager.isRTL ? scale(8) : 0,
     },
     radiusContainer: {
       marginTop: verticalScale(16),
@@ -1135,6 +1199,7 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       fontWeight: '600',
       color: colors.primary,
       marginBottom: verticalScale(8),
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
   });
 

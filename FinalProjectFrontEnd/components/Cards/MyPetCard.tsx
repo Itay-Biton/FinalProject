@@ -226,6 +226,7 @@ const MyPetCard: React.FC<MyPetCardProps> = memo(
                 images={pet.images}
                 petId={petId}
                 isLost={pet.isLost}
+                isFound={pet.isFound}
                 currentIndex={currentImageIndex}
                 onIndexChange={onImageIndexChange}
                 onScroll={onImageScroll}

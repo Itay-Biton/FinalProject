@@ -9,7 +9,6 @@ import BusinessImageSlider from '../UI/BusinessImageSlider';
 // Icons
 import PhoneIconSvg from '../../assets/icons/ic_phone.svg';
 import LocationIconSvg from '../../assets/icons/ic_location.svg';
-import EmailIconSvg from '../../assets/icons/ic_email2.svg';
 import ViewIconSvg from '../../assets/icons/ic_eye.svg';
 import NavigateIconSvg from '../../assets/icons/ic_navigate.svg';
 import AgeIconSvg from '../../assets/icons/ic_age.svg';
@@ -20,6 +19,7 @@ import SpeciesIconSvg from '../../assets/icons/ic_species.svg';
 import FurIconSvg from '../../assets/icons/ic_fur.svg';
 import EyeIconSvg from '../../assets/icons/ic_eye.svg';
 import ProfileIconSvg from '../../assets/icons/ic_profile.svg';
+
 // Icon components
 const ProfileIcon = ({ color }: { color?: string }) => (
   <ProfileIconSvg
@@ -28,8 +28,6 @@ const ProfileIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
-// Icon components
 const PhoneIcon = ({ color }: { color?: string }) => (
   <PhoneIconSvg
     width={moderateScale(16)}
@@ -37,7 +35,6 @@ const PhoneIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const LocationIcon = ({ color }: { color?: string }) => (
   <LocationIconSvg
     width={moderateScale(16)}
@@ -45,15 +42,6 @@ const LocationIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
-const EmailIcon = ({ color }: { color?: string }) => (
-  <EmailIconSvg
-    width={moderateScale(16)}
-    height={moderateScale(16)}
-    stroke={color || 'black'}
-  />
-);
-
 const ViewIcon = ({ color }: { color?: string }) => (
   <ViewIconSvg
     width={moderateScale(16)}
@@ -61,7 +49,6 @@ const ViewIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const NavigateIcon = ({ color }: { color?: string }) => (
   <NavigateIconSvg
     width={moderateScale(16)}
@@ -69,7 +56,6 @@ const NavigateIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const AgeIcon = ({ color }: { color?: string }) => (
   <AgeIconSvg
     width={moderateScale(16)}
@@ -77,7 +63,6 @@ const AgeIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const WeightIcon = ({ color }: { color?: string }) => (
   <WeightIconSvg
     width={moderateScale(16)}
@@ -85,7 +70,6 @@ const WeightIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const VaccinatedIcon = ({ color }: { color?: string }) => (
   <VaccinatedIconSvg
     width={moderateScale(16)}
@@ -93,7 +77,6 @@ const VaccinatedIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const ChipIcon = ({ color }: { color?: string }) => (
   <ChipIconSvg
     width={moderateScale(16)}
@@ -101,7 +84,6 @@ const ChipIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const SpeciesIcon = ({ color }: { color?: string }) => (
   <SpeciesIconSvg
     width={moderateScale(16)}
@@ -109,7 +91,6 @@ const SpeciesIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const FurIcon = ({ color }: { color?: string }) => (
   <FurIconSvg
     width={moderateScale(14)}
@@ -117,7 +98,6 @@ const FurIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const EyeIcon = ({ color }: { color?: string }) => (
   <EyeIconSvg
     width={moderateScale(14)}
@@ -136,8 +116,6 @@ interface Pet {
   furColor: string;
   eyeColor: string;
   weight: string;
-  ownerName: string;
-  ownerEmail: string;
   phones: string[];
   location: string;
   distance: string;
@@ -156,8 +134,7 @@ interface PetCardProps {
   currentImageIndex: number;
   onImageIndexChange: (petId: string, index: number) => void;
   onImageScroll: (event: any, petId: string, imageCount: number) => void;
-  onCall: (phones: string[], ownerName: string) => void;
-  onEmail: (email: string) => void;
+  onCall: (phones: string[]) => void;
   onViewDetails: (petId: string, petName: string) => void;
   onNavigate?: (petId: string, petName: string) => void;
 }
@@ -169,7 +146,6 @@ const PetCard: React.FC<PetCardProps> = memo(
     onImageIndexChange,
     onImageScroll,
     onCall,
-    onEmail,
     onViewDetails,
     onNavigate,
   }) => {
@@ -180,7 +156,6 @@ const PetCard: React.FC<PetCardProps> = memo(
       if (onNavigate) {
         onNavigate(pet.id, pet.name);
       } else {
-        // Default behavior
         onViewDetails(pet.id, pet.name);
       }
     }, [pet.id, pet.name, onNavigate, onViewDetails]);
@@ -189,7 +164,7 @@ const PetCard: React.FC<PetCardProps> = memo(
 
     return (
       <Card key={pet.id} style={styles.petCard} mode="outlined">
-        {/* Full-width Image Slider */}
+        {/* Image Slider & Status Overlay */}
         <View style={styles.imageSliderContainer}>
           <BusinessImageSlider
             images={pet.images}
@@ -198,8 +173,6 @@ const PetCard: React.FC<PetCardProps> = memo(
             onIndexChange={onImageIndexChange}
             onScroll={onImageScroll}
           />
-
-          {/* Status Overlay */}
           <View style={styles.statusOverlay}>
             {pet.isLost && (
               <View style={[styles.statusCircle, styles.lostStatusCircle]}>
@@ -217,7 +190,7 @@ const PetCard: React.FC<PetCardProps> = memo(
         </View>
 
         <Card.Content style={styles.cardContent}>
-          {/* Pet Header */}
+          {/* Header */}
           <View style={styles.petHeader}>
             <View style={styles.petTitleContainer}>
               <Text style={styles.petName} numberOfLines={2}>
@@ -226,7 +199,7 @@ const PetCard: React.FC<PetCardProps> = memo(
               <View style={styles.petBasicInfo}>
                 <View style={styles.speciesBreedContainer}>
                   <View style={styles.speciesChip}>
-                    <SpeciesIcon color={colors.buttonTextColor!!} />
+                    <SpeciesIcon color={colors.buttonTextColor} />
                     <Text style={styles.speciesText}>
                       {t(pet.species).toUpperCase()}
                     </Text>
@@ -238,24 +211,21 @@ const PetCard: React.FC<PetCardProps> = memo(
             </View>
           </View>
 
-          {/* Pet Characteristics */}
+          {/* Characteristics */}
           <View style={styles.characteristicsContainer}>
             <View style={styles.characteristicsRow}>
               <View style={styles.characteristicPill}>
                 <AgeIcon color={colors.primary} />
                 <Text style={styles.characteristicText}>{pet.age}</Text>
               </View>
-
               <View style={styles.characteristicPill}>
                 <WeightIcon color={colors.primary} />
                 <Text style={styles.characteristicText}>{pet.weight}</Text>
               </View>
-
               <View style={styles.characteristicPill}>
                 <FurIcon color={colors.primary} />
                 <Text style={styles.characteristicText}>{t(pet.furColor)}</Text>
               </View>
-
               <View style={styles.characteristicPill}>
                 <EyeIcon color={colors.primary} />
                 <Text style={styles.characteristicText}>{t(pet.eyeColor)}</Text>
@@ -263,26 +233,12 @@ const PetCard: React.FC<PetCardProps> = memo(
             </View>
           </View>
 
-          {/* Pet Info Grid */}
+          {/* Info Grid */}
           <View style={styles.petInfoGrid}>
             <View style={styles.infoItem}>
               <LocationIcon color={colors.primary} />
               <Text style={styles.infoText} numberOfLines={2}>
                 {pet.location}
-              </Text>
-            </View>
-
-            <View style={styles.infoItem}>
-              <ProfileIcon color={colors.primary} />
-              <Text style={styles.infoText} numberOfLines={1}>
-                {pet.ownerName}
-              </Text>
-            </View>
-
-            <View style={styles.infoItem}>
-              <EmailIcon color={colors.primary} />
-              <Text style={styles.infoText} numberOfLines={1}>
-                {pet.ownerEmail}
               </Text>
             </View>
           </View>
@@ -316,7 +272,6 @@ const PetCard: React.FC<PetCardProps> = memo(
                 {pet.vaccinated ? t('vaccinated') : t('needs_vaccine')}
               </Text>
             </View>
-
             <View
               style={[
                 styles.healthIndicator,
@@ -344,26 +299,17 @@ const PetCard: React.FC<PetCardProps> = memo(
           {/* Contact Buttons */}
           <View style={styles.contactSection}>
             <View style={styles.contactButtons}>
-              <TouchableOpacity
-                style={styles.contactButton}
-                onPress={() => onCall(pet.phones, pet.ownerName)}
-              >
-                <View style={styles.contactButtonContent}>
-                  <PhoneIcon color={colors.buttonTextColor} />
-                  <Text style={styles.contactButtonText}>{t('call')}</Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.contactButton}
-                onPress={() => onEmail(pet.ownerEmail)}
-              >
-                <View style={styles.contactButtonContent}>
-                  <EmailIcon color={colors.buttonTextColor} />
-                  <Text style={styles.contactButtonText}>{t('email')}</Text>
-                </View>
-              </TouchableOpacity>
-
+              {pet.phones.length > 0 && (
+                <TouchableOpacity
+                  style={styles.contactButton}
+                  onPress={() => onCall(pet.phones)}
+                >
+                  <View style={styles.contactButtonContent}>
+                    <PhoneIcon color={colors.buttonTextColor} />
+                    <Text style={styles.contactButtonText}>{t('call')}</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={styles.contactButton}
                 onPress={() => onViewDetails(pet.id, pet.name)}
@@ -373,7 +319,6 @@ const PetCard: React.FC<PetCardProps> = memo(
                   <Text style={styles.contactButtonText}>{t('details')}</Text>
                 </View>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.contactButton}
                 onPress={handleNavigate}
@@ -422,38 +367,27 @@ const createStyles = (colors: ThemeColors) =>
       justifyContent: 'center',
       alignItems: 'center',
       shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 2,
-      },
+      shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.25,
       shadowRadius: 3.84,
       elevation: 3,
     },
-    lostStatusCircle: {
-      backgroundColor: '#FF5722',
-    },
-    foundStatusCircle: {
-      backgroundColor: '#4CAF50',
-    },
+    lostStatusCircle: { backgroundColor: '#FF5722' },
+    foundStatusCircle: { backgroundColor: '#4CAF50' },
     statusText: {
       color: 'white',
       fontSize: moderateScale(16),
       fontWeight: '700',
       textAlign: 'center',
     },
-    cardContent: {
-      padding: scale(20),
-    },
+    cardContent: { padding: scale(20) },
     petHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'flex-start',
       marginBottom: verticalScale(16),
     },
-    petTitleContainer: {
-      flex: 1,
-    },
+    petTitleContainer: { flex: 1 },
     petName: {
       fontSize: moderateScale(20),
       fontWeight: '700',
@@ -481,7 +415,7 @@ const createStyles = (colors: ThemeColors) =>
       marginRight: scale(8),
     },
     speciesText: {
-      color: colors.buttonTextColor!!,
+      color: colors.buttonTextColor,
       fontSize: moderateScale(11),
       fontWeight: '600',
       marginLeft: scale(4),
@@ -498,9 +432,7 @@ const createStyles = (colors: ThemeColors) =>
       fontWeight: '500',
       textAlign: 'right',
     },
-    characteristicsContainer: {
-      marginBottom: verticalScale(16),
-    },
+    characteristicsContainer: { marginBottom: verticalScale(16) },
     characteristicsRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -522,9 +454,7 @@ const createStyles = (colors: ThemeColors) =>
       marginLeft: scale(4),
       fontWeight: '500',
     },
-    petInfoGrid: {
-      marginBottom: verticalScale(16),
-    },
+    petInfoGrid: { marginBottom: verticalScale(16) },
     infoItem: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -534,17 +464,6 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: moderateScale(14),
       color: colors.onSurface,
       marginLeft: scale(8),
-      flex: 1,
-    },
-    ownerLabel: {
-      fontSize: moderateScale(14),
-      color: colors.primary,
-      fontWeight: '600',
-      marginLeft: scale(8),
-    },
-    ownerText: {
-      fontSize: moderateScale(14),
-      color: colors.onSurface,
       flex: 1,
     },
     descriptionContainer: {
@@ -581,26 +500,20 @@ const createStyles = (colors: ThemeColors) =>
       flex: 1,
     },
     healthIndicatorPositive: {
-      backgroundColor: '#4CAF50' + '20',
+      backgroundColor: '#4CAF5020',
       borderColor: '#4CAF50',
     },
     healthIndicatorNegative: {
-      backgroundColor: '#FF5722' + '20',
+      backgroundColor: '#FF572220',
       borderColor: '#FF5722',
     },
-    healthTextPositive: {
-      color: '#4CAF50',
-    },
-    healthTextNegative: {
-      color: '#FF5722',
-    },
+    healthTextPositive: { color: '#4CAF50' },
+    healthTextNegative: { color: '#FF5722' },
     divider: {
       marginVertical: verticalScale(12),
       backgroundColor: colors.outline,
     },
-    contactSection: {
-      marginTop: verticalScale(8),
-    },
+    contactSection: { marginTop: verticalScale(8) },
     contactButtons: {
       flexDirection: 'row',
       justifyContent: 'space-between',

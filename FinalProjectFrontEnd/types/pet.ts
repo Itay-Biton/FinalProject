@@ -45,6 +45,8 @@ export interface Pet {
   images: string[];
   description?: string;
   isLost: boolean;
+  isFound: boolean;
+  phoneNumbers: string[];
   location?: PetLocation;
   distance?: string;
   registrationDate: string;
@@ -69,6 +71,8 @@ export interface MyPetEntry {
   images: string[];
   description?: string;
   isLost: boolean;
+  isFound: boolean;
+  phoneNumbers: string[];
   vaccinated?: boolean;
   microchipped?: boolean;
   registrationDate: string;
@@ -107,6 +111,8 @@ export interface CreatePetRequest {
   images?: string[];
   description?: string;
   isLost?: boolean;
+  isFound?: boolean;
+  phoneNumbers?: string[];
   address?: string;
   lat?: number;
   lng?: number;
@@ -117,9 +123,15 @@ export interface CreatePetRequest {
 
 // ─── UPDATE PET REQUEST ─────────────────────────────────────────────────────
 export interface UpdatePetRequest extends Partial<CreatePetRequest> {
-  lat?: number;
-  lng?: number;
-  address?: string;
+  location?: {
+    address: string;
+    coordinates: {
+      lat: number;
+      lng: number;
+    };
+  };
+  isFound?: boolean;
+  phoneNumbers?: string[];
 }
 
 // ─── PET SEARCH PARAMS ──────────────────────────────────────────────────────

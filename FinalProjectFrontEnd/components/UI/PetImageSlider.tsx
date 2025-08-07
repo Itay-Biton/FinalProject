@@ -16,6 +16,7 @@ interface PetImageSliderProps {
   images: string[];
   petId: string;
   isLost: boolean;
+  isFound: boolean;
   currentIndex: number;
   onIndexChange: (petId: string, index: number) => void;
   onScroll: (event: any, petId: string, imageCount: number) => void;
@@ -26,6 +27,7 @@ const PetImageSlider: React.FC<PetImageSliderProps> = ({
   images,
   petId,
   isLost,
+  isFound,
   currentIndex,
   onIndexChange,
   onScroll,
@@ -91,17 +93,19 @@ const PetImageSlider: React.FC<PetImageSliderProps> = ({
       </ScrollView>
 
       {/* Status Badge - Lost or Safe */}
-      <View
-        style={[
-          styles.statusBadge,
-          {
-            borderColor: colors.surface,
-            backgroundColor: isLost ? '#FF3D00' : '#4CAF50',
-          },
-        ]}
-      >
-        <Text style={styles.statusBadgeText}>{isLost ? '!' : '●'}</Text>
-      </View>
+      {(isFound || isLost) && (
+        <View
+          style={[
+            styles.statusBadge,
+            {
+              borderColor: colors.surface,
+              backgroundColor: isLost ? '#FF3D00' : '#4CAF50',
+            },
+          ]}
+        >
+          <Text style={styles.statusBadgeText}>{isLost ? '!' : '●'}</Text>
+        </View>
+      )}
 
       {/* Dots Indicator */}
       {images.length > 1 && (

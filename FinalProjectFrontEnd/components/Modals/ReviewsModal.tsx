@@ -18,6 +18,7 @@ import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import { useTheme } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { ThemeColors } from '../../types/theme';
+import { Review } from '../../types/business';
 
 // Icons
 import StarIconSvg from '../../assets/icons/ic_star.svg';
@@ -58,20 +59,6 @@ const UserIcon = ({ color }: { color?: string }) => (
   />
 );
 
-// Review interface (should match your API response)
-interface Review {
-  _id: string;
-  rating: number;
-  comment?: string;
-  user: {
-    _id: string;
-    name: string;
-    email?: string;
-  };
-  createdAt: string;
-  updatedAt: string;
-}
-
 interface ReviewsModalProps {
   visible: boolean;
   onClose: () => void;
@@ -82,7 +69,7 @@ interface ReviewsModalProps {
     params?: { limit?: number; offset?: number },
   ) => Promise<{
     success: boolean;
-    data?: Review[];
+    data?: any[];
     error?: string;
     pagination?: {
       total: number;
@@ -95,6 +82,7 @@ interface ReviewsModalProps {
 
 const ReviewsModal: React.FC<ReviewsModalProps> = memo(
   ({ visible, onClose, businessId, businessName, onFetchReviews }) => {
+    // Hooks must be called unconditionally
     const { width, height } = useWindowDimensions();
     const { colors }: { colors: ThemeColors } = useTheme();
     const { t } = useTranslation();
@@ -103,22 +91,12 @@ const ReviewsModal: React.FC<ReviewsModalProps> = memo(
       [width, height, colors],
     );
 
-    const [reviews, setReviews] = useState<Review[]>([]);
+    const [reviews, setReviews] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-
-    // Reset state when modal becomes visible
-    useEffect(() => {
-      if (visible) {
-        setReviews([]);
-        setError(null);
-        setHasMore(true);
-        loadReviews(true);
-      }
-    }, [visible, businessId]);
 
     const loadReviews = useCallback(
       async (reset = false) => {
@@ -135,14 +113,12 @@ const ReviewsModal: React.FC<ReviewsModalProps> = memo(
             limit: 10,
             offset: reset ? 0 : reviews.length,
           };
-
           const response = await onFetchReviews(businessId, params);
 
           if (response.success && response.data) {
             const newReviews = reset
               ? response.data
               : [...reviews, ...response.data];
-
             setReviews(newReviews);
             setHasMore(response.pagination?.hasMore || false);
           } else {
@@ -156,8 +132,17 @@ const ReviewsModal: React.FC<ReviewsModalProps> = memo(
           setRefreshing(false);
         }
       },
-      [businessId, hasMore, loadingMore, reviews.length, onFetchReviews, t],
+      [businessId, hasMore, loadingMore, onFetchReviews, reviews, t],
     );
+
+    useEffect(() => {
+      if (visible && businessId) {
+        setReviews([]);
+        setError(null);
+        setHasMore(true);
+        loadReviews(true);
+      }
+    }, [visible, businessId]);
 
     const handleRefresh = useCallback(() => {
       setRefreshing(true);
@@ -180,22 +165,25 @@ const ReviewsModal: React.FC<ReviewsModalProps> = memo(
       const stars = [];
       const fullStars = Math.floor(rating);
       const hasHalfStar = rating % 1 !== 0;
-
       for (let i = 0; i < fullStars; i++) {
         stars.push(
           <StarIcon key={`full-${i}`} color="#FFD700" filled size={14} />,
         );
       }
-
       if (hasHalfStar) {
         stars.push(<StarIcon key="half" color="#FFD700" filled size={14} />);
       }
-
       const emptyStars = 5 - Math.ceil(rating);
       for (let i = 0; i < emptyStars; i++) {
-        stars.push(<StarIcon key={`empty-${i}`} color="#FFD700" size={14} />);
+        stars.push(
+          <StarIcon
+            key={`empty-${i}`}
+            color="#FFD700"
+            filled={false}
+            size={14}
+          />,
+        );
       }
-
       return stars;
     }, []);
 
@@ -224,7 +212,7 @@ const ReviewsModal: React.FC<ReviewsModalProps> = memo(
     );
 
     const renderReviewItem = useCallback(
-      ({ item }: { item: Review }) => (
+      ({ item }: { item: any }) => (
         <View style={styles.reviewItem}>
           <View style={styles.reviewHeader}>
             <View style={styles.userInfo}>
@@ -233,20 +221,18 @@ const ReviewsModal: React.FC<ReviewsModalProps> = memo(
               </View>
               <View style={styles.userDetails}>
                 <Text style={styles.userName} numberOfLines={1}>
-                  {item.user.name}
+                  {item.user?.name || t('anonymous_user')}
                 </Text>
                 <Text style={styles.reviewDate}>
-                  {formatDate(item.createdAt)}
+                  {formatDate(item.createdAt || new Date().toISOString())}
                 </Text>
               </View>
             </View>
-
             <View style={styles.ratingContainer}>
               <View style={styles.starsRow}>{renderStars(item.rating)}</View>
-              <Text style={styles.ratingValue}>{item.rating.toFixed(1)}</Text>
+              <Text style={styles.ratingValue}>{Math.ceil(item.rating)}</Text>
             </View>
           </View>
-
           {item.comment && (
             <View style={styles.commentContainer}>
               <Text style={styles.commentText}>{item.comment}</Text>
@@ -254,7 +240,7 @@ const ReviewsModal: React.FC<ReviewsModalProps> = memo(
           )}
         </View>
       ),
-      [colors.primary, formatDate, renderStars, styles],
+      [colors.primary, formatDate, renderStars, styles, t],
     );
 
     const renderEmptyState = useCallback(
@@ -272,7 +258,6 @@ const ReviewsModal: React.FC<ReviewsModalProps> = memo(
 
     const renderFooter = useCallback(() => {
       if (!loadingMore) return null;
-
       return (
         <View style={styles.loadingFooter}>
           <ActivityIndicator size="small" color={colors.primary} />
@@ -281,12 +266,20 @@ const ReviewsModal: React.FC<ReviewsModalProps> = memo(
       );
     }, [loadingMore, colors.primary, styles, t]);
 
-    // Calculate average rating
     const averageRating = useMemo(() => {
       if (reviews.length === 0) return 0;
-      const total = reviews.reduce((sum, review) => sum + review.rating, 0);
-      return total / reviews.length;
+      const total = reviews.reduce(
+        (sum, review) => sum + (review.rating || 0),
+        0,
+      );
+      return Math.round((total / reviews.length) * 10) / 10;
     }, [reviews]);
+
+    // guard after Hooks
+    if (!businessId) {
+      console.log('ReviewsModal: businessId is empty, not rendering');
+      return null;
+    }
 
     return (
       <Modal
@@ -328,7 +321,7 @@ const ReviewsModal: React.FC<ReviewsModalProps> = memo(
                       {renderStars(averageRating)}
                     </View>
                     <Text style={styles.averageRatingText}>
-                      {averageRating.toFixed(1)} ({reviews.length}{' '}
+                      {Math.ceil(averageRating)} ({reviews.length}{' '}
                       {t('reviews_count')})
                     </Text>
                   </View>
@@ -358,12 +351,14 @@ const ReviewsModal: React.FC<ReviewsModalProps> = memo(
                   <FlatList
                     data={reviews}
                     renderItem={renderReviewItem}
-                    keyExtractor={item => item._id}
+                    keyExtractor={item =>
+                      item._id || item.id || Math.random().toString()
+                    }
                     showsVerticalScrollIndicator={false}
                     refreshing={refreshing}
                     onRefresh={handleRefresh}
                     onEndReached={handleLoadMore}
-                    onEndReachedThreshold={0.3}
+                    onEndReachedThreshold={0.5}
                     ListEmptyComponent={renderEmptyState}
                     ListFooterComponent={renderFooter}
                     contentContainerStyle={[
@@ -504,10 +499,12 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       fontWeight: '600',
       color: colors.modalText || colors.onSurface,
       marginBottom: verticalScale(2),
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     reviewDate: {
       fontSize: moderateScale(12),
       color: colors.onSurfaceVariant,
+      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     ratingContainer: {
       alignItems: 'flex-end',
@@ -597,5 +594,4 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
   });
 
 ReviewsModal.displayName = 'ReviewsModal';
-
 export default ReviewsModal;

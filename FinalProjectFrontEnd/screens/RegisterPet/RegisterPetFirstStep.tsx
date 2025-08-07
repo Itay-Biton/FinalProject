@@ -206,7 +206,7 @@ const RegisterPetScreenFirstStep: React.FC<RegisterPetScreenProps> = ({
         eyeColor,
         furColor,
         weight: weight ? { value: +weight, unit: 'kg' } : undefined,
-        isLost: isFound,
+        isFound: isFound,
         microchipped: hasChip,
         vaccinated: isVaccinated,
         images: [],

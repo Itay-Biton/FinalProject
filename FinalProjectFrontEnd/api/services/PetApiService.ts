@@ -122,6 +122,43 @@ class PetApiService {
       `${this.prefix}/${petId}`,
     );
   }
+
+  // ─── MATCHING PETS ──────────────────────────────────────────────────────────
+
+  /**
+   * Find potential matches for a found pet
+   * @param foundPetData Partial<Pet>
+   */
+  async findMatches(foundPetData: Partial<Pet>): Promise<ApiResponse<any>> {
+    const res = await this.apiClient.post('/pets/match', foundPetData);
+    return res;
+  }
+
+  /**
+   * Get match results for my lost pets
+   */
+  async getMyMatches(): Promise<ApiResponse<any>> {
+    const res = await this.apiClient.get('/pets/matches');
+    return res;
+  }
+
+  /**
+   * Confirm a match for a lost pet
+   * @param petId string
+   * @param matchedPetId string
+   */
+  async confirmMatch(
+    petId: string,
+    matchedPetId: string,
+  ): Promise<ApiResponse<{ message: string }>> {
+    const res = await this.apiClient.post<{ message: string }>(
+      `/pets/${petId}/confirm-match`,
+      {
+        matchedPetId,
+      },
+    );
+    return res;
+  }
 }
 
 export default PetApiService;

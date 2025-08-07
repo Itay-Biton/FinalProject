@@ -169,7 +169,6 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
   // Phone number picker modal state
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [selectedOwner, setSelectedOwner] = useState<null | {
-    name: string;
     phones: string[];
   }>(null);
 
@@ -263,13 +262,13 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
     refreshPets();
   }, [refreshPets]);
 
-  const handleCall = useCallback((phones: string[], ownerName: string) => {
+  const handleCall = useCallback((phones: string[]) => {
     if (phones.length === 1) {
       // If only one phone number, call directly
       Linking.openURL(`tel:${phones[0]}`);
     } else {
       // If multiple phone numbers, show picker modal
-      setSelectedOwner({ name: ownerName, phones });
+      setSelectedOwner({ phones });
       setShowPhoneModal(true);
     }
   }, []);
@@ -278,9 +277,9 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
     Linking.openURL(`tel:${phoneNumber}`);
   }, []);
 
-  const handleEmail = useCallback((email: string) => {
-    Linking.openURL(`mailto:${email}`);
-  }, []);
+  // const handleEmail = useCallback((email: string) => {
+  //   Linking.openURL(`mailto:${email}`);
+  // }, []);
 
   const handleViewDetails = useCallback((petId: string, petName: string) => {
     console.log('View pet details:', petId, petName);
@@ -463,11 +462,6 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
   // Convert Pet to PetCard format
   const convertPetForCard = useCallback(
     (pet: Pet) => {
-      // Extract owner info - this would normally come populated from backend
-      const ownerName = 'Pet Owner'; // Default since Pet type doesn't include owner info
-      const ownerEmail = 'owner@example.com'; // Default
-      const phones = ['000-000-0000']; // Default
-
       return {
         id: pet._id,
         name: pet.name,
@@ -477,9 +471,7 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
         furColor: pet.furColor || '',
         eyeColor: pet.eyeColor || '',
         weight: formatWeight(pet.weight || { value: 0, unit: 'kg' }), // Convert to formatted string
-        ownerName,
-        ownerEmail,
-        phones,
+        phones: pet.phoneNumbers,
         location: pet.location?.address || '',
         latitude: pet.location?.coordinates?.coordinates?.[1] || 0, // GeoJSON: [lng, lat]
         longitude: pet.location?.coordinates?.coordinates?.[0] || 0,
@@ -488,7 +480,7 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
         images: pet.images || [],
         description: pet.description || '',
         isLost: pet.isLost,
-        isFound: false, // Not in Pet type, default to false
+        isFound: pet.isFound,
         vaccinated: pet.vaccinated || false,
         microchipped: pet.microchipped || false,
       };
@@ -508,7 +500,6 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
           onImageIndexChange={handleImageIndexChange}
           onImageScroll={handleImageScroll}
           onCall={handleCall}
-          onEmail={handleEmail}
           onViewDetails={handleViewDetails}
           onNavigate={handleNavigate}
         />
@@ -520,7 +511,6 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
       handleImageIndexChange,
       handleImageScroll,
       handleCall,
-      handleEmail,
       handleViewDetails,
       handleNavigate,
     ],
