@@ -1,0 +1,834 @@
+import React, { useState, useMemo, memo, useCallback } from 'react';
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  useWindowDimensions,
+  Alert,
+  TouchableOpacity,
+  ActivityIndicator,
+  Platform,
+  Image,
+} from 'react-native';
+import {
+  useTheme,
+  Text,
+  Card,
+  IconButton,
+  Chip,
+  TextInput,
+} from 'react-native-paper';
+import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
+import { useTranslation } from 'react-i18next';
+import { ThemeColors } from '../../types/theme';
+import { useNavigation } from '@react-navigation/native';
+import { openSettings } from 'react-native-permissions';
+import StyledLocationPicker from '../../components/UI/StyledLocationPicker';
+import CustomInputText from '../../components/UI/CustomInputText';
+import ContactPicker from '../../components/UI/ContactPicker';
+import PetSelectionCard from '../../components/Cards/PetSelectionCard'; // 👈 New import
+import {
+  useContactPermission,
+  ContactInfo,
+} from '../../utils/ContactPermissions';
+
+// Icons
+import LocationIconSvg from '../../assets/icons/ic_location.svg';
+import AddIconSvg from '../../assets/icons/ic_add.svg';
+import DeleteIconSvg from '../../assets/icons/ic_delete.svg';
+import PostIconSvg from '../../assets/icons/ic_post.svg';
+import PhoneIconSvg from '../../assets/icons/ic_phone.svg';
+import ContactsIconSvg from '../../assets/icons/ic_users.svg';
+import { useLocationPermission } from '../../utils/LocationPermissions';
+import { CustomRadioGroup, Option } from '../../components/UI/CustomRadioGroup';
+
+type LocationMethod = 'current' | 'manual';
+
+// Icon components
+const LocationIcon = ({ color }: { color?: string }) => (
+  <LocationIconSvg
+    width={moderateScale(20)}
+    height={moderateScale(20)}
+    stroke={color || 'black'}
+  />
+);
+
+const AddIcon = ({ color }: { color?: string }) => (
+  <AddIconSvg
+    width={moderateScale(20)}
+    height={moderateScale(20)}
+    stroke={color || 'black'}
+  />
+);
+
+const DeleteIcon = ({ color }: { color?: string }) => (
+  <DeleteIconSvg
+    width={moderateScale(20)}
+    height={moderateScale(20)}
+    stroke={color || 'black'}
+  />
+);
+
+const PhoneIcon = ({ color }: { color?: string }) => (
+  <PhoneIconSvg
+    width={moderateScale(20)}
+    height={moderateScale(20)}
+    stroke={color || 'black'}
+  />
+);
+
+const ContactsIcon = ({ color }: { color?: string }) => (
+  <ContactsIconSvg
+    width={moderateScale(20)}
+    height={moderateScale(20)}
+    stroke={color || 'black'}
+  />
+);
+
+const PostIcon = ({ color }: { color?: string }) => (
+  <PostIconSvg
+    width={moderateScale(30)}
+    height={moderateScale(30)}
+    stroke={color || 'black'}
+    fill="none"
+  />
+);
+
+// Icon render functions
+const renderAddIcon = (color: string) => () => <AddIcon color={color} />;
+const renderDeleteIconForChip = (color: string) => () =>
+  <DeleteIcon color={color} />;
+const renderContactsIcon = (color: string) => () =>
+  <ContactsIcon color={color} />;
+
+// Sample pets data with numeric values
+const userPets = [
+  {
+    id: '1',
+    name: 'Max',
+    species: 'dog',
+    breed: 'Golden Retriever',
+    age: 3.0,
+    weight: { value: 25.0, unit: 'kg' },
+    image:
+      'https://images.unsplash.com/photo-1552053831-71594a27632d?w=200&h=200&fit=crop',
+    furColor: 'golden',
+    eyeColor: 'brown',
+  },
+  {
+    id: '2',
+    name: 'Luna',
+    species: 'cat',
+    breed: 'Persian',
+    age: 2.0,
+    weight: { value: 4.0, unit: 'kg' },
+    image:
+      'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=200&h=200&fit=crop',
+    furColor: 'white',
+    eyeColor: 'blue',
+  },
+  {
+    id: '3',
+    name: 'Charlie',
+    species: 'dog',
+    breed: 'Labrador Mix',
+    age: 5.0,
+    weight: { value: 30.0, unit: 'kg' },
+    image:
+      'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=200&h=200&fit=crop',
+    furColor: 'black',
+    eyeColor: 'brown',
+  },
+  {
+    id: '4',
+    name: 'Tweety',
+    species: 'bird',
+    breed: 'Canary',
+    age: 1.0,
+    weight: { value: 20.0, unit: 'g' },
+    image:
+      'https://images.unsplash.com/photo-1452570053594-1b985d6ea890?w=200&h=200&fit=crop',
+    furColor: 'golden',
+    eyeColor: 'black',
+  },
+];
+
+interface LocationData {
+  id: string;
+  title: string;
+  lat: string;
+  lon: string;
+}
+
+interface Pet {
+  id: string;
+  name: string;
+  species: string;
+  breed: string;
+  age: number;
+  weight: { value: number; unit: string };
+  image: string;
+  furColor: string;
+  eyeColor: string;
+}
+
+const PostScreen: React.FC = memo(() => {
+  const { width, height } = useWindowDimensions();
+  const { colors }: { colors: ThemeColors } = useTheme();
+  const { t } = useTranslation();
+  const styles = useMemo(
+    () => createStyles(width, height, colors),
+    [width, height, colors],
+  );
+
+  // Contact hook and state
+  const { checkPermission } = useContactPermission();
+  const [contactPickerVisible, setContactPickerVisible] = useState(false);
+
+  // State management
+  const [selectedPet, setSelectedPet] = useState<string | null>(null);
+  const [phoneNumbers, setPhoneNumbers] = useState<string[]>(['']);
+  const [currentPhoneInput, setCurrentPhoneInput] = useState('');
+  const [lostLocation, setLostLocation] = useState<LocationData | null>(null);
+  const [locationMethod, setLocationMethod] = useState<'current' | 'manual'>(
+    'current',
+  );
+  const [additionalDetails, setAdditionalDetails] = useState('');
+  const {
+    getCurrentLocation,
+    loading: currentLocationLoading,
+    waitingForSettings,
+  } = useLocationPermission();
+
+  const handleFetchLocation = useCallback(async () => {
+    const coords = await getCurrentLocation();
+    if (coords) {
+      setLostLocation({
+        id: 'current-location',
+        title: t('current_location'),
+        lat: coords.latitude.toString(),
+        lon: coords.longitude.toString(),
+      });
+    }
+  }, [getCurrentLocation, t]);
+
+  const locationOptions: Option<LocationMethod>[] = [
+    { value: 'current', label: t('use_current_location') },
+    { value: 'manual', label: t('enter_location_manually') },
+  ];
+
+  const handlePetSelection = useCallback(
+    (petId: string) => {
+      setSelectedPet(petId === selectedPet ? null : petId);
+    },
+    [selectedPet],
+  );
+
+  const addPhoneNumber = useCallback(() => {
+    if (
+      currentPhoneInput.trim() &&
+      !phoneNumbers.includes(currentPhoneInput.trim())
+    ) {
+      setPhoneNumbers(prev => [
+        ...prev.filter(p => p !== ''),
+        currentPhoneInput.trim(),
+      ]);
+      setCurrentPhoneInput('');
+    }
+  }, [currentPhoneInput, phoneNumbers]);
+
+  const removePhoneNumber = useCallback((index: number) => {
+    setPhoneNumbers(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const importFromContacts = useCallback(async () => {
+    console.log('🎯 Import from contacts triggered');
+
+    try {
+      console.log('🔍 Checking permission...');
+      const hasPermission = await checkPermission();
+      console.log('📝 Check permission result:', hasPermission);
+
+      if (hasPermission) {
+        console.log('✅ Permission granted, opening picker');
+        setContactPickerVisible(true);
+      } else {
+        console.log('❌ Permission not granted, requesting...');
+
+        const { request, PERMISSIONS } = require('react-native-permissions');
+        const permission =
+          Platform.OS === 'ios'
+            ? PERMISSIONS.IOS.CONTACTS
+            : PERMISSIONS.ANDROID.READ_CONTACTS;
+
+        console.log('🔄 Requesting permission manually:', permission);
+        const result = await request(permission);
+        console.log('📋 Manual request result:', result);
+
+        if (result === 'granted') {
+          console.log('✅ Permission granted after manual request');
+          setContactPickerVisible(true);
+        } else {
+          console.log('❌ Permission denied after manual request');
+          Alert.alert(
+            t('permission_required'),
+            `Permission result: ${result}. This might be a simulator issue.`,
+            [
+              { text: t('cancel'), style: 'cancel' },
+              {
+                text: 'Force Open (Test UI)',
+                onPress: () => setContactPickerVisible(true),
+              },
+              { text: t('open_settings'), onPress: () => openSettings() },
+            ],
+          );
+        }
+      }
+    } catch (error) {
+      console.error('❌ Import contacts error:', error);
+      Alert.alert(
+        'Error',
+        `Failed to check permissions: ${(error as Error).message}`,
+        [
+          { text: t('ok') },
+          {
+            text: 'Force Open (Test UI)',
+            onPress: () => setContactPickerVisible(true),
+          },
+        ],
+      );
+    }
+  }, [checkPermission, t]);
+
+  const handleContactSelect = useCallback(
+    (contact: ContactInfo) => {
+      if (contact.phoneNumbers.length > 0) {
+        if (contact.phoneNumbers.length === 1) {
+          const phoneNumber = contact.phoneNumbers[0].number;
+          const cleanedNumber = phoneNumber.replace(/[\s\-()]/g, '');
+
+          if (!phoneNumbers.includes(cleanedNumber)) {
+            setPhoneNumbers(prev => [
+              ...prev.filter(p => p !== ''),
+              cleanedNumber,
+            ]);
+
+            Alert.alert(
+              t('contact_imported'),
+              `${contact.displayName}: ${phoneNumber}`,
+              [{ text: t('ok') }],
+            );
+          } else {
+            Alert.alert(t('already_added'), t('phone_number_already_added'), [
+              { text: t('ok') },
+            ]);
+          }
+        } else {
+          const buttons = contact.phoneNumbers.map(phone => ({
+            text: `${phone.label}: ${phone.number}`,
+            onPress: () => {
+              const cleanedNumber = phone.number.replace(/[\s\-()]/g, '');
+              if (!phoneNumbers.includes(cleanedNumber)) {
+                setPhoneNumbers(prev => [
+                  ...prev.filter(p => p !== ''),
+                  cleanedNumber,
+                ]);
+                Alert.alert(
+                  t('contact_imported'),
+                  `${contact.displayName}: ${phone.number}`,
+                  [{ text: t('ok') }],
+                );
+              } else {
+                Alert.alert(
+                  t('already_added'),
+                  t('phone_number_already_added'),
+                  [{ text: t('ok') }],
+                );
+              }
+            },
+          }));
+
+          Alert.alert(
+            t('select_phone_number'),
+            `${contact.displayName} ${t('has_multiple_numbers')}`,
+            [...buttons, { text: t('cancel'), style: 'cancel' }],
+          );
+        }
+      }
+    },
+    [phoneNumbers, t],
+  );
+
+  const handleLocationSelect = useCallback((location: LocationData) => {
+    setLostLocation(location);
+  }, []);
+
+  const handleLocationMethodChange = useCallback(
+    (method: 'current' | 'manual') => {
+      setLocationMethod(method);
+      if (method === 'manual') {
+        setLostLocation(null);
+      }
+    },
+    [],
+  );
+
+  const handlePost = useCallback(() => {
+    if (!selectedPet) {
+      Alert.alert(t('validation_error'), t('please_select_pet'));
+      return;
+    }
+
+    if (phoneNumbers.filter(p => p.trim()).length === 0) {
+      Alert.alert(t('validation_error'), t('please_add_phone_number'));
+      return;
+    }
+
+    if (!lostLocation) {
+      Alert.alert(t('validation_error'), t('please_select_location'));
+      return;
+    }
+
+    const postData = {
+      petId: selectedPet,
+      phoneNumbers: phoneNumbers.filter(p => p.trim()),
+      location: lostLocation,
+      additionalDetails: additionalDetails.trim(),
+    };
+
+    console.log('Post data:', postData);
+
+    Alert.alert(t('post_successful'), t('lost_pet_posted_successfully'), [
+      {
+        text: t('ok'),
+        onPress: () => {
+          setSelectedPet(null);
+          setPhoneNumbers(['']);
+          setCurrentPhoneInput('');
+          setLostLocation(null);
+          setLocationMethod('current');
+          setAdditionalDetails('');
+        },
+      },
+    ]);
+  }, [selectedPet, phoneNumbers, lostLocation, additionalDetails, t]);
+
+  // 👈 Simplified render function - now just returns the PetSelectionCard component
+  const renderPetCard = useCallback(
+    (pet: Pet) => (
+      <PetSelectionCard
+        key={pet.id}
+        pet={pet}
+        isSelected={selectedPet === pet.id}
+        onPress={handlePetSelection}
+        colors={colors}
+      />
+    ),
+    [selectedPet, handlePetSelection, colors],
+  );
+
+  return (
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+        contentInset={{ top: 0, left: 0, bottom: 0, right: 0 }}
+      >
+        {/* Pet Selection */}
+        <View style={styles.section}>
+          {/* Section Header with Icon */}
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderContent}>
+              <Text style={styles.sectionTitleBold}>
+                {t('select_your_pet')}
+              </Text>
+              <Text style={styles.sectionSubtitle}>
+                {t('choose_lost_pet_description')}
+              </Text>
+            </View>
+            <View style={styles.sectionHeaderIcon}>
+              <Image
+                source={require('../../assets/icons/ic_lost_pets.png')}
+                style={styles.logo}
+              />
+            </View>
+          </View>
+
+          {userPets.map(renderPetCard)}
+        </View>
+
+        {/* Phone Numbers */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('contact_phone_numbers')}</Text>
+          <Text style={styles.sectionSubtitle}>
+            {t('add_contact_numbers_description')}
+          </Text>
+
+          <View style={styles.phoneInputContainer}>
+            <CustomInputText
+              placeholder={t('enter_phone_number')}
+              value={currentPhoneInput}
+              onChangeText={setCurrentPhoneInput}
+              leftIcon={PhoneIcon}
+              containerStyle={styles.phoneInputField}
+              leftIconContainerStyle={styles.phoneInputIconContainer}
+              keyboardType="name-phone-pad"
+            />
+            <View style={styles.phoneButtonsContainer}>
+              <IconButton
+                icon={renderAddIcon(colors.buttonTextColor!!)}
+                size={moderateScale(24)}
+                onPress={addPhoneNumber}
+                style={styles.phoneActionButton}
+                disabled={!currentPhoneInput.trim()}
+              />
+              <IconButton
+                icon={renderContactsIcon(colors.buttonTextColor!!)}
+                size={moderateScale(24)}
+                onPress={importFromContacts}
+                style={styles.phoneActionButton}
+              />
+            </View>
+          </View>
+
+          <View style={styles.phoneChipsContainer}>
+            {phoneNumbers
+              .filter(p => p.trim())
+              .map((phone, index) => (
+                <Chip
+                  key={index}
+                  style={styles.phoneChip}
+                  textStyle={styles.phoneChipText}
+                  onClose={() => removePhoneNumber(index)}
+                  closeIcon={renderDeleteIconForChip(colors.buttonTextColor!!)}
+                >
+                  {`\u202D${phone}\u202C  `}
+                </Chip>
+              ))}
+          </View>
+        </View>
+
+        {/* Location Selection */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('lost_location')}</Text>
+          <Text style={styles.sectionSubtitle}>{t('where_pet_was_lost')}</Text>
+
+          <View style={styles.locationMethodContainer}>
+            <CustomRadioGroup<LocationMethod>
+              options={locationOptions}
+              selectedValue={locationMethod}
+              onValueChange={handleLocationMethodChange}
+              selectedColor={colors.rangeTextColor}
+              unselectedColor={colors.primary}
+            />
+
+            {locationMethod === 'current' && (
+              <>
+                <TouchableOpacity
+                  style={[
+                    styles.locationButton,
+                    (currentLocationLoading || waitingForSettings) &&
+                      styles.locationButtonDisabled,
+                  ]}
+                  onPress={handleFetchLocation}
+                  disabled={currentLocationLoading || waitingForSettings}
+                >
+                  <View style={styles.locationButtonContent}>
+                    {currentLocationLoading ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <LocationIcon color={colors.primary} />
+                    )}
+                    <Text style={styles.locationButtonText}>
+                      {waitingForSettings
+                        ? t('waiting_for_settings')
+                        : t('get_current_location')}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                {waitingForSettings && (
+                  <Text style={styles.settingsHelpText}>
+                    {t('location_settings_help')}
+                  </Text>
+                )}
+              </>
+            )}
+
+            {locationMethod === 'manual' && (
+              <StyledLocationPicker
+                onSelect={handleLocationSelect}
+                placeholder={t('search_lost_location')}
+                label={t('search_location')}
+              />
+            )}
+          </View>
+
+          {lostLocation && (
+            <Card style={styles.selectedLocationCard}>
+              <Card.Content style={styles.selectedLocationContent}>
+                <LocationIcon color={colors.buttonColor} />
+                <Text style={styles.selectedLocationText} numberOfLines={2}>
+                  {lostLocation.title}
+                </Text>
+              </Card.Content>
+            </Card>
+          )}
+        </View>
+
+        {/* Additional Details */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('additional_details')}</Text>
+          <Text style={styles.sectionSubtitle}>
+            {t('additional_details_description')}
+          </Text>
+
+          <TextInput
+            mode="outlined"
+            placeholder={t('enter_additional_details')}
+            value={additionalDetails}
+            onChangeText={setAdditionalDetails}
+            style={styles.detailsInput}
+            contentStyle={styles.detailsInputContent}
+            outlineStyle={styles.detailsInputOutline}
+            multiline
+            numberOfLines={3}
+            maxLength={500}
+          />
+
+          <Text style={styles.characterCounter}>
+            {additionalDetails.length}/500
+          </Text>
+        </View>
+      </ScrollView>
+
+      <TouchableOpacity style={styles.fab} onPress={handlePost}>
+        <PostIcon color={colors.buttonTextColor} />
+      </TouchableOpacity>
+
+      <ContactPicker
+        visible={contactPickerVisible}
+        onClose={() => setContactPickerVisible(false)}
+        onSelectContact={handleContactSelect}
+        colors={colors}
+      />
+    </View>
+  );
+});
+
+// Simplified styles - removed PetCard related styles since they're now in the component
+const createStyles = (width: number, height: number, colors: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      paddingTop: verticalScale(20),
+      paddingHorizontal: scale(10),
+    },
+    scrollView: {
+      flex: 1,
+    },
+    scrollViewContent: {
+      paddingBottom: verticalScale(100),
+    },
+    logo: {
+      width: moderateScale(150),
+      height: moderateScale(150),
+      resizeMode: 'contain',
+      marginTop: verticalScale(30),
+      marginBottom: verticalScale(10),
+      alignSelf: 'center',
+    },
+    section: {
+      marginBottom: verticalScale(32),
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      marginBottom: verticalScale(16),
+    },
+    sectionHeaderContent: {
+      flex: 1,
+      paddingRight: scale(16),
+    },
+    sectionHeaderIcon: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingTop: verticalScale(4), // Slight offset to align with title
+    },
+    sectionTitle: {
+      fontSize: moderateScale(18),
+      fontWeight: '600',
+      color: colors.primary,
+      marginBottom: verticalScale(6),
+      textAlign: 'left',
+    },
+    sectionTitleBold: {
+      fontSize: moderateScale(20),
+      fontWeight: '700',
+      color: colors.primary,
+      marginBottom: verticalScale(6),
+      textAlign: 'left',
+    },
+    sectionSubtitle: {
+      fontSize: moderateScale(14),
+      color: colors.onSurfaceVariant,
+      marginBottom: 0, // Remove bottom margin since it's handled by sectionHeader
+      textAlign: 'left',
+      opacity: 0.8,
+      lineHeight: verticalScale(20),
+    },
+    phoneInputContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: verticalScale(16),
+    },
+    phoneInputField: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: verticalScale(12),
+      paddingHorizontal: scale(12),
+      backgroundColor: colors.surface,
+      borderRadius: moderateScale(4),
+      borderWidth: 1,
+      borderColor: colors.outline,
+      height: verticalScale(52),
+      marginRight: scale(12),
+    },
+    phoneInputIconContainer: {
+      width: moderateScale(20),
+      height: moderateScale(20),
+      marginLeft: scale(12),
+      marginRight: scale(8),
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    phoneButtonsContainer: {
+      flexDirection: 'column',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    phoneActionButton: {
+      margin: 0,
+      backgroundColor: colors.buttonColor,
+      marginBottom: verticalScale(8),
+      width: moderateScale(40),
+      height: moderateScale(40),
+    },
+    phoneChipsContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+    },
+    phoneChip: {
+      marginBottom: verticalScale(8),
+      marginRight: scale(8),
+      backgroundColor: colors.buttonColor,
+      writingDirection: 'ltr',
+    },
+    phoneChipText: {
+      color: colors.buttonTextColor,
+      fontWeight: '500',
+      fontSize: moderateScale(16),
+    },
+    locationMethodContainer: {
+      marginBottom: verticalScale(16),
+    },
+    locationButton: {
+      backgroundColor: colors.background,
+      borderColor: colors.buttonColor,
+      borderWidth: 2,
+      borderRadius: moderateScale(8),
+      marginBottom: verticalScale(16),
+      paddingVertical: verticalScale(12),
+      paddingHorizontal: scale(16),
+    },
+    locationButtonDisabled: {
+      opacity: 0.6,
+    },
+    locationButtonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    locationButtonText: {
+      fontSize: moderateScale(16),
+      fontWeight: '600',
+      color: colors.primary,
+      marginLeft: scale(8),
+    },
+    settingsHelpText: {
+      fontSize: moderateScale(12),
+      color: colors.onSurfaceVariant,
+      textAlign: 'center',
+      fontStyle: 'italic',
+      marginTop: verticalScale(8),
+      opacity: 0.8,
+    },
+    selectedLocationCard: {
+      backgroundColor: colors.surface,
+      marginTop: verticalScale(16),
+      borderRadius: moderateScale(12),
+      borderWidth: 1,
+      borderColor: colors.buttonColor + '30',
+    },
+    selectedLocationContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: scale(16),
+    },
+    selectedLocationText: {
+      fontSize: moderateScale(14),
+      color: colors.onSurface,
+      marginLeft: scale(12),
+      flex: 1,
+      fontWeight: '500',
+    },
+    detailsInput: {
+      backgroundColor: colors.surface,
+      minHeight: verticalScale(120),
+      fontSize: moderateScale(14),
+    },
+    detailsInputContent: {
+      paddingVertical: verticalScale(12),
+      textAlignVertical: 'top',
+      fontSize: moderateScale(16),
+    },
+    detailsInputOutline: {
+      borderColor: colors.outline,
+      borderWidth: 1,
+      borderRadius: moderateScale(16),
+    },
+    characterCounter: {
+      fontSize: moderateScale(12),
+      color: colors.onSurfaceVariant,
+      textAlign: 'right',
+      marginTop: verticalScale(6),
+      opacity: 0.7,
+    },
+    fab: {
+      position: 'absolute',
+      bottom: verticalScale(16),
+      right: scale(16),
+      backgroundColor: colors.buttonColor,
+      borderRadius: moderateScale(30),
+      width: moderateScale(60),
+      height: moderateScale(60),
+      justifyContent: 'center',
+      alignItems: 'center',
+      elevation: 6,
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 3,
+      },
+      shadowOpacity: 0.27,
+      shadowRadius: 4.65,
+    },
+  });
+
+PostScreen.displayName = 'PostScreen';
+
+export default PostScreen;

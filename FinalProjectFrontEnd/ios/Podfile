@@ -1,0 +1,53 @@
+# ios/Podfile
+
+# ── 1️⃣ Resolve react_native_pods.rb & permissions setup ───────────────
+def node_require(script)
+  # Resolve script with node to allow for hoisting
+  require Pod::Executable.execute_command('node', ['-p',
+    "require.resolve('#{script}', {paths: [process.argv[1]]})",
+    __dir__
+  ]).strip
+end
+
+# Load React Native's Pod helper and the react-native-permissions setup
+node_require('react-native/scripts/react_native_pods.rb')
+node_require('react-native-permissions/scripts/setup.rb')
+
+# ── 2️⃣ Standard React Native setup ───────────────────────────────────
+platform :ios, min_ios_version_supported
+prepare_react_native_project!
+
+# ── 3️⃣ Register only the permissions your app will request ────────────
+setup_permissions([
+  'LocationWhenInUse',
+  'Contacts',
+  # add more: 'Camera', 'PhotoLibrary', etc.
+])
+
+# ── 4️⃣ Existing linkage and target block ─────────────────────────────
+linkage = ENV['USE_FRAMEWORKS']
+if linkage
+  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
+  use_frameworks! :linkage => linkage.to_sym
+end
+
+target 'MyPet' do
+  config = use_native_modules!
+
+  # ── Static frameworks for Firebase iOS SDK v9+ (react-native-firebase v15+) ──
+  use_frameworks! :linkage => :static
+  $RNFirebaseAsStaticFramework = true
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
+  )
+
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false
+    )
+  end
+end

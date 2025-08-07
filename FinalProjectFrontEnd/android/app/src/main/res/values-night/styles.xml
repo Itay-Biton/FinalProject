@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Night mode color for DateTimePicker clock hands -->
+    <color name="picker_accent_dark">#B8860B</color> <!-- rgb(255, 193, 7) -->
+
+    <!-- Night Theme (same structure as day theme but with dark colors) -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <!-- Customize your theme here. -->
+        <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+        
+        <!-- DateTimePicker clock hands color for night mode -->
+        <item name="colorAccent">@color/picker_accent_dark</item>
+        <item name="android:colorAccent">@color/picker_accent_dark</item>
+    </style>
+</resources>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Day mode color for DateTimePicker clock hands -->
+    <color name="picker_accent_light">#B8860B</color> 
+
+    <!-- Day Theme (your existing theme with DateTimePicker colors added) -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <!-- Customize your theme here. -->
+        <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+        
+        <!-- DateTimePicker clock hands color for day mode -->
+        <item name="colorAccent">@color/picker_accent_light</item>
+        <item name="android:colorAccent">@color/picker_accent_light</item>
+    </style>
+
+    <style name="BootTheme" parent="Theme.BootSplash">
+        <item name="bootSplashBackground">@color/bootsplash_background</item>
+        <item name="bootSplashLogo">@drawable/bootsplash_logo</item>
+        <item name="postBootSplashTheme">@style/AppTheme</item>
+    </style>
+</resources>
