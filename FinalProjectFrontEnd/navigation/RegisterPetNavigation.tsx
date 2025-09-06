@@ -9,9 +9,8 @@ import RegisterPetThirdStep from '../screens/RegisterPet/RegisterPetThirdStep';
 
 export type RegisterPetStackParamList = {
   RegisterPetFirstStep: undefined;
-  RegisterPetSecondStep: { petId: string };
-  RegisterPetThirdStep: { petId: string };
-  RegisterPetFourthStep: undefined;
+  RegisterPetSecondStep: { petId: string; isFound: boolean };
+  RegisterPetThirdStep: { petId: string; isFound?: boolean };
 };
 
 const Stack = createNativeStackNavigator<RegisterPetStackParamList>();

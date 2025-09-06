@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+// screens/Edit/EditPetFirstStep.tsx
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Image,
@@ -10,18 +11,25 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useTheme, Text, ProgressBar } from 'react-native-paper';
-import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import { useTranslation } from 'react-i18next';
+import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RegisterPetStackParamList } from '../../navigation/RegisterPetNavigation';
-import RegisterIconSvg from '../../assets/icons/ic_next.svg';
+import { EditPetStackParamList } from '../../navigation/EditPetNavigation';
+import { ThemeColors } from '../../types/theme';
+import { getSpeciesList } from '../../constants/speciesList';
+import { getEyeColorList } from '../../constants/eyeColorList';
+import { getFurColorList } from '../../constants/furColorList';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { useEditPetViewModel } from '../../viewModels/EditPetViewModel';
 
-// Import the custom input components
+// UI bits (same style/components as Register)
 import CustomInputText from '../../components/UI/CustomInputText';
 import CustomTextInputDate from '../../components/UI/CustomTextInputDate';
 import CustomInputCheckBox from '../../components/UI/CustomInputCheckBox';
+import IconDropdown from '../../components/UI/IconDropdown';
 
-// Dummy icon imports for pet registration fields
+// Icons (reuse same register icons)
+import RegisterIconSvg from '../../assets/icons/ic_next.svg';
 import PetNameIconSvg from '../../assets/icons/ic_petname.svg';
 import SpeciesIconSvg from '../../assets/icons/ic_species.svg';
 import BreedIconSvg from '../../assets/icons/ic_breed.svg';
@@ -30,16 +38,8 @@ import FurIconSvg from '../../assets/icons/ic_fur.svg';
 import WeightIconSvg from '../../assets/icons/ic_weight.svg';
 import VaccinatedIconSvg from '../../assets/icons/ic_vaccinated.svg';
 import ChipIconSvg from '../../assets/icons/ic_chip.svg';
-import BirthdayIconSvg from '../../assets/icons/ic_age.svg'; // Birthday icon
-import IconDropdown from '../../components/UI/IconDropdown';
+import BirthdayIconSvg from '../../assets/icons/ic_age.svg';
 import FoundIconSvg from '../../assets/icons/ic_user.svg';
-import { ThemeColors } from '../../types/theme';
-// Import Dropdown from react-native-element-dropdown for searchable dropdown
-import { getSpeciesList } from '../../constants/speciesList';
-import { getEyeColorList } from '../../constants/eyeColorList';
-import { getFurColorList } from '../../constants/furColorList';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import { useRegisterPetViewModel } from '../../viewModels/RegisterPetViewModel';
 
 const RegisterIcon = ({ color }: { color?: string }) => (
   <RegisterIconSvg
@@ -48,7 +48,6 @@ const RegisterIcon = ({ color }: { color?: string }) => (
     fill={color || 'black'}
   />
 );
-
 const PetNameIcon = ({ color }: { color?: string }) => (
   <PetNameIconSvg
     width={moderateScale(20)}
@@ -56,7 +55,6 @@ const PetNameIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const SpeciesIcon = ({ color }: { color?: string }) => (
   <SpeciesIconSvg
     width={moderateScale(20)}
@@ -64,7 +62,6 @@ const SpeciesIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const BreedIcon = ({ color }: { color?: string }) => (
   <BreedIconSvg
     width={moderateScale(20)}
@@ -72,7 +69,6 @@ const BreedIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const EyeIcon = ({ color }: { color?: string }) => (
   <EyeIconSvg
     width={moderateScale(20)}
@@ -80,7 +76,6 @@ const EyeIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const FurIcon = ({ color }: { color?: string }) => (
   <FurIconSvg
     width={moderateScale(20)}
@@ -88,7 +83,6 @@ const FurIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const WeightIcon = ({ color }: { color?: string }) => (
   <WeightIconSvg
     width={moderateScale(20)}
@@ -96,7 +90,6 @@ const WeightIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const VaccinatedIcon = ({ color }: { color?: string }) => (
   <VaccinatedIconSvg
     width={moderateScale(20)}
@@ -104,7 +97,6 @@ const VaccinatedIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const ChipIcon = ({ color }: { color?: string }) => (
   <ChipIconSvg
     width={moderateScale(20)}
@@ -112,7 +104,6 @@ const ChipIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const BirthdayIcon = ({ color }: { color?: string }) => (
   <BirthdayIconSvg
     width={moderateScale(20)}
@@ -120,7 +111,6 @@ const BirthdayIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const FoundIcon = ({ color }: { color?: string }) => (
   <FoundIconSvg
     width={moderateScale(20)}
@@ -129,76 +119,70 @@ const FoundIcon = ({ color }: { color?: string }) => (
   />
 );
 
-type RegisterPetScreenProps = NativeStackScreenProps<
-  RegisterPetStackParamList,
-  'RegisterPetFirstStep'
->;
+type Props = NativeStackScreenProps<EditPetStackParamList, 'EditPetFirstStep'>;
 
-const RegisterPetScreenFirstStep: React.FC<RegisterPetScreenProps> = ({
-  navigation,
-}) => {
-  const { width, height } = useWindowDimensions();
+const EditPetFirstStep: React.FC<Props> = ({ route, navigation }) => {
+  const { petId } = route.params;
   const { colors }: { colors: ThemeColors } = useTheme();
+  const { t } = useTranslation();
+  const { width, height } = useWindowDimensions();
   const styles = useMemo(
     () => createStyles(width, height, colors),
     [width, height, colors],
   );
-  const { t } = useTranslation();
 
-  // Form states
+  const { pet, loading, saving, error, loadPet, updatePet } =
+    useEditPetViewModel();
+
+  // Form state (mirrors register)
   const [petName, setPetName] = useState('');
   const [species, setSpecies] = useState('');
   const [breed, setBreed] = useState('');
-  const [birthday, setBirthday] = useState(''); // New birthday field
+  const [birthday, setBirthday] = useState('');
   const [eyeColor, setEyeColor] = useState('');
   const [furColor, setFurColor] = useState('');
-  const [weight, setWeight] = useState('');
+  const [weight, setWeight] = useState(''); // string input, convert on save
   const [isVaccinated, setIsVaccinated] = useState(false);
   const [hasChip, setHasChip] = useState(false);
-  const [isFound, setIsFound] = useState(false);
+  const [isFound, setIsFound] = useState(false); // mirrors your register toggle
 
-  // Use the external lists
+  // Lists
   const speciesList = useMemo(() => getSpeciesList(t), [t]);
   const eyeColorList = useMemo(() => getEyeColorList(t), [t]);
   const furColorList = useMemo(() => getFurColorList(t), [t]);
 
-  // Custom renderItem to include image with each item
-  const renderSpeciesItem = (item: any) => {
-    return (
-      <View style={styles.itemContainer}>
-        <Image
-          source={item.icon}
-          style={styles.itemIcon}
-          resizeMode="contain"
-        />
-        <Text style={styles.itemText}>{item.label}</Text>
-      </View>
-    );
-  };
+  useEffect(() => {
+    (async () => {
+      try {
+        const p = await loadPet(petId);
+        // Prefill fields safely
+        setPetName(p.name || '');
+        setSpecies(p.species || '');
+        setBreed(p.breed || '');
+        setBirthday((p as any).birthday || '');
+        setEyeColor((p as any).eyeColor || '');
+        setFurColor((p as any).furColor || '');
+        setWeight(p?.weight?.value != null ? String(p.weight.value) : '');
+        setIsVaccinated(!!(p as any).vaccinated);
+        setHasChip(!!(p as any).microchipped);
+        // Your model uses isLost in other places; keep a consistent toggle here for UX only
+        setIsFound(Boolean((p as any).isFound)); // if not present, stays false
+      } catch (e) {
+        // loadPet already sets error
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [petId]);
 
-  // Custom renderItem for eye color, showing a colored cube with border
-  const renderEyeColorItem = (item: any) => {
-    return (
-      <View style={styles.itemContainer}>
-        <View style={[styles.colorCube, { backgroundColor: item.color }]} />
-        <Text style={styles.itemText}>{item.label}</Text>
-      </View>
-    );
-  };
+  useEffect(() => {
+    if (error) {
+      Alert.alert(t('error', { defaultValue: 'Error' }), error);
+    }
+  }, [error, t]);
 
-  const renderFurColorItem = (item: any) => (
-    <View style={styles.itemContainer}>
-      <View style={[styles.colorCube, { backgroundColor: item.color }]} />
-      <Text style={styles.itemText}>{item.label}</Text>
-    </View>
-  );
-
-  // ViewModel hook
-  const { registerPet, loading } = useRegisterPetViewModel();
-
-  const handleRegister = async () => {
+  const handleSave = async () => {
     try {
-      const pet = await registerPet({
+      await updatePet(petId, {
         name: petName,
         species,
         breed,
@@ -206,58 +190,74 @@ const RegisterPetScreenFirstStep: React.FC<RegisterPetScreenProps> = ({
         eyeColor,
         furColor,
         weight: weight ? { value: +weight, unit: 'kg' } : undefined,
-        isFound: isFound,
         microchipped: hasChip,
         vaccinated: isVaccinated,
-        images: [],
-        ...(isFound && {
-          foundDetails: {
-            location: {
-              address: '',
-              coordinates: {
-                type: 'Point',
-                coordinates: [0, 0],
-              },
-            },
-            notes: 'Found pet reported during registration',
+        // Note: server likely manages lost/found in separate flows.
+        // Keep "isFound" as UX toggle only, omit unless your API expects it here.
+      } as any);
+
+      Alert.alert(
+        t('pet_updated', { defaultValue: 'Pet updated' }),
+        t('pet_updated_success', { defaultValue: 'Your changes were saved.' }),
+        [
+          {
+            text: t('ok', { defaultValue: 'OK' }),
+            onPress: () => navigation.goBack(),
           },
-          phoneNumbers: {},
-        }),
-      });
-      navigation.replace('RegisterPetSecondStep', { petId: pet._id, isFound });
-    } catch (err: any) {
-      Alert.alert(t('error'), err.message);
+        ],
+      );
+    } catch (e: any) {
+      Alert.alert(
+        t('error', { defaultValue: 'Error' }),
+        e?.message || 'Failed to update pet',
+      );
     }
   };
 
+  // Reuse the same renderers as register
+  const renderSpeciesItem = (item: any) => (
+    <View style={styles.itemContainer}>
+      <Image source={item.icon} style={styles.itemIcon} resizeMode="contain" />
+      <Text style={styles.itemText}>{item.label}</Text>
+    </View>
+  );
+  const renderEyeColorItem = (item: any) => (
+    <View style={styles.itemContainer}>
+      <View style={[styles.colorCube, { backgroundColor: item.color }]} />
+      <Text style={styles.itemText}>{item.label}</Text>
+    </View>
+  );
+  const renderFurColorItem = (item: any) => (
+    <View style={styles.itemContainer}>
+      <View style={[styles.colorCube, { backgroundColor: item.color }]} />
+      <Text style={styles.itemText}>{item.label}</Text>
+    </View>
+  );
+
   return (
     <KeyboardAwareScrollView
-      enabled={true} // turn it on/off
-      bottomOffset={20} // distance from input to keyboard
-      extraKeyboardSpace={10} // extra padding under inputs
-      disableScrollOnKeyboardHide={false} // keep scroll position on keyboard hide
+      enabled
+      bottomOffset={20}
+      extraKeyboardSpace={10}
+      disableScrollOnKeyboardHide={false}
       style={styles.scrollView}
       contentContainerStyle={styles.scrollViewContent}
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.container}>
-        <ProgressBar
-          progress={0.33}
-          color={colors.buttonColor}
-          style={[
-            styles.progressBar,
-            I18nManager.isRTL && styles.progressBarRTL,
-          ]}
-        />
         <Image
           source={require('../../assets/icons/ic_register_pet.png')}
           style={styles.logo}
         />
         <View style={styles.card}>
           {/* Full Pet Name */}
-          <Text style={styles.label}>{t('full_pet_name')}</Text>
+          <Text style={styles.label}>
+            {t('full_pet_name', { defaultValue: 'Full pet name' })}
+          </Text>
           <CustomInputText
-            placeholder={t('enter_full_pet_name')}
+            placeholder={t('enter_full_pet_name', {
+              defaultValue: 'Enter full pet name',
+            })}
             value={petName}
             onChangeText={setPetName}
             leftIcon={PetNameIcon}
@@ -266,23 +266,27 @@ const RegisterPetScreenFirstStep: React.FC<RegisterPetScreenProps> = ({
             iconColor={colors.primary}
           />
 
-          {/* Species Dropdown using react-native-element-dropdown */}
+          {/* Species */}
           <IconDropdown
-            label={t('species')}
+            label={t('species', { defaultValue: 'Species' })}
             icon={SpeciesIcon}
             data={speciesList}
             value={species}
             onChange={item => setSpecies(item.value)}
             labelField="label"
             valueField="value"
-            placeholder={t('select_species')}
+            placeholder={t('select_species', {
+              defaultValue: 'Select species',
+            })}
             renderItem={renderSpeciesItem}
           />
 
           {/* Breed */}
-          <Text style={styles.label}>{t('breed')}</Text>
+          <Text style={styles.label}>
+            {t('breed', { defaultValue: 'Breed' })}
+          </Text>
           <CustomInputText
-            placeholder={t('enter_breed')}
+            placeholder={t('enter_breed', { defaultValue: 'Enter breed' })}
             value={breed}
             onChangeText={setBreed}
             leftIcon={BreedIcon}
@@ -292,10 +296,14 @@ const RegisterPetScreenFirstStep: React.FC<RegisterPetScreenProps> = ({
           />
 
           {/* Birthday */}
-          <Text style={styles.label}>{t('birthday')}</Text>
+          <Text style={styles.label}>
+            {t('birthday', { defaultValue: 'Birthday' })}
+          </Text>
           <View style={styles.dateInputWrapper}>
             <CustomTextInputDate
-              placeholder={t('select_birthday')}
+              placeholder={t('select_birthday', {
+                defaultValue: 'Select birthday',
+              })}
               value={birthday}
               onChangeText={setBirthday}
               leftIcon={BirthdayIcon}
@@ -310,9 +318,13 @@ const RegisterPetScreenFirstStep: React.FC<RegisterPetScreenProps> = ({
           </View>
 
           {/* Weight */}
-          <Text style={styles.label}>{t('weight')}</Text>
+          <Text style={styles.label}>
+            {t('weight', { defaultValue: 'Weight' })}
+          </Text>
           <CustomInputText
-            placeholder={t('enter_weight_kg')}
+            placeholder={t('enter_weight_kg', {
+              defaultValue: 'Enter weight (kg)',
+            })}
             value={weight}
             onChangeText={setWeight}
             keyboardType="numeric"
@@ -322,35 +334,40 @@ const RegisterPetScreenFirstStep: React.FC<RegisterPetScreenProps> = ({
             iconColor={colors.primary}
           />
 
-          {/* Eye Color Dropdown */}
+          {/* Eye Color */}
           <IconDropdown
-            label={t('eye_color')}
+            label={t('eye_color', { defaultValue: 'Eye color' })}
             icon={EyeIcon}
             data={eyeColorList}
             value={eyeColor}
             onChange={item => setEyeColor(item.value)}
             labelField="label"
             valueField="value"
-            placeholder={t('select_eye_color')}
+            placeholder={t('select_eye_color', {
+              defaultValue: 'Select eye color',
+            })}
             renderItem={renderEyeColorItem}
           />
 
           {/* Fur Color */}
           <IconDropdown
-            label={t('fur_color')}
+            label={t('fur_color', { defaultValue: 'Fur color' })}
             icon={FurIcon}
             data={furColorList}
             value={furColor}
             onChange={item => setFurColor(item.value)}
             labelField="label"
             valueField="value"
-            placeholder={t('select_fur_color')}
+            placeholder={t('select_fur_color', {
+              defaultValue: 'Select fur color',
+            })}
             renderItem={renderFurColorItem}
           />
-          {/* Found / Stray Checkbox */}
+
+          {/* Found / Stray (UX parity with register) */}
           <CustomInputCheckBox
             leftIcon={FoundIcon}
-            label={t('found_animal')}
+            label={t('found_animal', { defaultValue: 'Found / Stray' })}
             value={isFound}
             onValueChange={setIsFound}
             iconColor={colors.primary}
@@ -358,20 +375,21 @@ const RegisterPetScreenFirstStep: React.FC<RegisterPetScreenProps> = ({
             checkIconColor={colors.buttonTextColor}
           />
 
-          {/* Microchip Checkbox */}
+          {/* Microchip */}
           <CustomInputCheckBox
             leftIcon={ChipIcon}
-            label={t('has_microchip')}
+            label={t('has_microchip', { defaultValue: 'Has microchip' })}
             value={hasChip}
             onValueChange={setHasChip}
             iconColor={colors.primary}
             boxColor={colors.buttonColor}
             checkIconColor={colors.buttonTextColor}
           />
-          {/* Vaccinated Checkbox */}
+
+          {/* Vaccinated */}
           <CustomInputCheckBox
             leftIcon={VaccinatedIcon}
-            label={t('vaccinated')}
+            label={t('vaccinated', { defaultValue: 'Vaccinated' })}
             value={isVaccinated}
             onValueChange={setIsVaccinated}
             iconColor={colors.onSurface}
@@ -381,11 +399,14 @@ const RegisterPetScreenFirstStep: React.FC<RegisterPetScreenProps> = ({
 
           <View style={styles.buttonContainer}>
             <Pressable
-              style={[styles.customButton, loading && styles.disabledButton]}
-              onPress={handleRegister}
-              disabled={loading}
+              style={[
+                styles.customButton,
+                (loading || saving) && styles.disabledButton,
+              ]}
+              onPress={handleSave}
+              disabled={loading || saving}
             >
-              {loading ? (
+              {loading || saving ? (
                 <ActivityIndicator
                   animating
                   size="small"
@@ -439,9 +460,7 @@ const createStyles = (width: number, height: number, colors: any) =>
     disabledButton: {
       opacity: 0.6,
     },
-    // Input field styles that match checkbox styling exactly
     inputFieldContainer: {
-      // Same styling as checkboxRow
       flexDirection: 'row',
       alignItems: 'center',
       paddingVertical: verticalScale(12),
@@ -454,7 +473,6 @@ const createStyles = (width: number, height: number, colors: any) =>
       marginBottom: verticalScale(16),
     },
     inputDateFieldContainer: {
-      // Same styling as checkboxRow
       flexDirection: 'row',
       alignItems: 'center',
       paddingVertical: verticalScale(12),
@@ -467,7 +485,6 @@ const createStyles = (width: number, height: number, colors: any) =>
       marginBottom: 0,
     },
     inputIconContainer: {
-      // Same styling as checkboxIconContainer
       width: moderateScale(20),
       height: moderateScale(20),
       marginLeft: scale(12),
@@ -475,14 +492,13 @@ const createStyles = (width: number, height: number, colors: any) =>
       justifyContent: 'center',
       alignItems: 'center',
     },
-    // Dropdown wrapper to ensure consistent sizing
     dropdownWrapper: {
-      width: '100%', // make wrapper fill card
+      width: '100%',
       height: verticalScale(52),
       marginBottom: verticalScale(16),
     },
     dropdown: {
-      width: '100%', // span full wrapper width
+      width: '100%',
       height: verticalScale(52),
       borderColor: colors.outline,
       borderWidth: 1,
@@ -517,7 +533,6 @@ const createStyles = (width: number, height: number, colors: any) =>
       backgroundColor: colors.surface,
       lineHeight: verticalScale(52),
     },
-    // Consistent icon positioning - all icons same size
     iconContainer: {
       width: moderateScale(20),
       height: moderateScale(20),
@@ -534,10 +549,7 @@ const createStyles = (width: number, height: number, colors: any) =>
       justifyContent: 'center',
       alignItems: 'center',
     },
-    iconImage: {
-      width: moderateScale(20),
-      height: moderateScale(20),
-    },
+    iconImage: { width: moderateScale(20), height: moderateScale(20) },
     itemContainer: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -550,20 +562,14 @@ const createStyles = (width: number, height: number, colors: any) =>
       borderBottomWidth: 0.5,
       borderBottomColor: colors.outline,
     },
-    itemTextStyle: {
-      fontSize: moderateScale(16),
-      color: colors.onSurface,
-    },
+    itemTextStyle: { fontSize: moderateScale(16), color: colors.onSurface },
     itemIcon: {
       width: moderateScale(20),
       height: moderateScale(20),
       marginRight: scale(12),
       marginLeft: scale(12),
     },
-    itemText: {
-      fontSize: moderateScale(16),
-      color: colors.onSurface,
-    },
+    itemText: { fontSize: moderateScale(16), color: colors.onSurface },
     buttonContainer: {
       alignItems: 'center',
       marginTop: verticalScale(24),
@@ -574,13 +580,8 @@ const createStyles = (width: number, height: number, colors: any) =>
       borderRadius: moderateScale(50),
       padding: moderateScale(20),
     },
-    scrollView: {
-      backgroundColor: colors.background,
-    },
-    scrollViewContent: {
-      flexGrow: 1,
-      padding: 0,
-    },
+    scrollView: { backgroundColor: colors.background },
+    scrollViewContent: { flexGrow: 1, padding: 0 },
     colorCube: {
       width: moderateScale(20),
       height: moderateScale(20),
@@ -596,4 +597,4 @@ const createStyles = (width: number, height: number, colors: any) =>
     },
   });
 
-export default RegisterPetScreenFirstStep;
+export default EditPetFirstStep;

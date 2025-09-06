@@ -540,34 +540,55 @@ const SearchBusinessScreen: React.FC = memo(() => {
     },
     [],
   );
-
-  // Convert Business to BusinessCard format with actual review data - FIXED
   const convertBusinessForCard = useCallback(
     (business: Business) => {
-      const reviewData = getBusinessRating(business._id);
+      const raw = business as any;
+
+      // 1) Use backend-provided fields FIRST
+      let avg =
+        typeof raw.rating === 'number' && Number.isFinite(raw.rating)
+          ? raw.rating
+          : undefined;
+
+      let count =
+        typeof raw.reviewCount === 'number' && Number.isFinite(raw.reviewCount)
+          ? raw.reviewCount
+          : undefined;
+
+      // 2) Fallbacks (ONLY if needed)
+      if (avg === undefined && typeof raw.reviewsSummary?.avg === 'number') {
+        avg = raw.reviewsSummary.avg;
+      }
+      if (
+        count === undefined &&
+        typeof raw.reviewsSummary?.count === 'number'
+      ) {
+        count = raw.reviewsSummary.count;
+      }
+
+      if (avg === undefined || count === undefined) {
+        const cached = getBusinessRating(business._id); // { rating, count }
+        if (avg === undefined) avg = cached.rating;
+        if (count === undefined) count = cached.count;
+      }
+
+      const rating = typeof avg === 'number' && Number.isFinite(avg) ? avg : 0;
+      const reviewCount =
+        typeof count === 'number' && Number.isFinite(count) ? count : 0;
 
       return {
         id: business._id,
         name: business.name,
         serviceType: business.serviceType,
-        rating: reviewData.rating, // Now using actual review data
-        reviewCount: reviewData.count, // Now using actual review data
+        rating,
+        reviewCount,
         email: business.email || '',
         phoneNumbers: business.phoneNumbers,
         location: business.location.address,
-        latitude: business.location.coordinates.coordinates[1], // GeoJSON: [lng, lat]
+        latitude: business.location.coordinates.coordinates[1],
         longitude: business.location.coordinates.coordinates[0],
         distance: business.distance || t('distance_not_available'),
-        workingHours: business.workingHours
-          .map(
-            wh =>
-              `${wh.day}: ${
-                wh.isOpen
-                  ? `${wh.openTime || '00:00'}-${wh.closeTime || '00:00'}`
-                  : t('closed')
-              }`,
-          )
-          .join(', '),
+        workingHours: business.workingHours,
         images: business.images,
         description: business.description || t('no_description_available'),
         services: business.services,
@@ -580,6 +601,7 @@ const SearchBusinessScreen: React.FC = memo(() => {
 
   const renderBusinessItem = useCallback(
     ({ item }: { item: Business }) => {
+      console.log(item);
       const businessForCard = convertBusinessForCard(item);
       return (
         <BusinessCard
@@ -924,7 +946,6 @@ const SearchBusinessScreen: React.FC = memo(() => {
           onClose={handleCloseReviewsModal}
           businessId={selectedBusinessForReviews.id}
           businessName={selectedBusinessForReviews.name}
-          onFetchReviews={fetchBusinessReviews}
         />
       )}
 
@@ -965,7 +986,7 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       paddingHorizontal: scale(10),
     },
     header: {
-      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'flex-end',
       paddingBottom: verticalScale(16),
@@ -988,7 +1009,7 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       paddingBottom: verticalScale(20),
     },
     searchInputContainer: {
-      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+      flexDirection: 'row',
       alignItems: 'center',
       paddingVertical: verticalScale(12),
       paddingHorizontal: scale(12),
@@ -1008,7 +1029,7 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       alignItems: 'center',
     },
     dropdownItemContainer: {
-      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+      flexDirection: 'row',
       alignItems: 'center',
       paddingVertical: verticalScale(12),
       paddingHorizontal: scale(16),
@@ -1022,7 +1043,6 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
     dropdownItemText: {
       fontSize: moderateScale(16),
       color: colors.onSurface,
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     scrollView: {
       flex: 1,
@@ -1039,7 +1059,6 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       fontWeight: '500',
       color: colors.primary,
       marginBottom: verticalScale(16),
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     loadingContainer: {
       flex: 1,
@@ -1104,10 +1123,9 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       fontWeight: '600',
       color: colors.primary,
       marginBottom: verticalScale(12),
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     locationStatusCard: {
-      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+      flexDirection: 'row',
       alignItems: 'center',
       padding: scale(12),
       backgroundColor: colors.background,
@@ -1123,7 +1141,6 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       marginRight: I18nManager.isRTL ? scale(8) : 0,
       flex: 1,
       fontWeight: '500',
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     locationStatusSubtext: {
       fontSize: moderateScale(12),
@@ -1131,10 +1148,9 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       marginLeft: I18nManager.isRTL ? 0 : scale(8),
       marginRight: I18nManager.isRTL ? scale(8) : 0,
       flex: 1,
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     locationMethodContainer: {
-      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+      flexDirection: 'row',
       marginBottom: verticalScale(16),
       gap: scale(8),
     },

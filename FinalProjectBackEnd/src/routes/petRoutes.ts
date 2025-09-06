@@ -62,9 +62,21 @@ const router = Router();
  *                   breed: "Golden Retriever"
  *                   vaccinated: true
  *                   microchipped: true
- *                   isLost: false
+ *                   isLost: true
  *                   isFound: false
  *                   phoneNumbers: ["123-456-7890"]
+ *                   email: "owner@example.com"
+ *                   lostDetails:
+ *                     dateLost: "2025-08-01T10:30:00.000Z"
+ *                     lastSeen:
+ *                       address: "Herzl St 12, Tel Aviv"
+ *                       coordinates: [34.7778, 32.0662]
+ *                     notes: "Blue collar, friendly"
+ *                   foundDetails:
+ *                     dateFound: null
+ *                     location:
+ *                       address: ""
+ *                       coordinates: [0, 0]
  *               pagination:
  *                 total: 1
  *                 limit: 20
@@ -72,7 +84,7 @@ const router = Router();
  *                 hasMore: false
  */
 router.get("/mine", verifyFirebaseToken, async (req, res) => {
-  const { limit = 20, offset = 0 } = req.query;
+  const { limit = 20, offset = 0 } = req.query as any;
   const user = (req as any).user;
 
   const query = { ownerId: user._id };
@@ -100,9 +112,12 @@ router.get("/mine", verifyFirebaseToken, async (req, res) => {
     isLost: pet.isLost,
     isFound: pet.isFound,
     phoneNumbers: pet.phoneNumbers || [],
+    email: pet.email || undefined,
     vaccinated: pet.vaccinated,
     microchipped: pet.microchipped,
     registrationDate: pet.registrationDate,
+    lostDetails: pet.lostDetails || undefined,
+    foundDetails: pet.foundDetails || undefined,
   }));
 
   res.json({
@@ -135,12 +150,12 @@ router.get("/mine", verifyFirebaseToken, async (req, res) => {
  *         name: location
  *         schema:
  *           type: string
- *         description: lat,lng
+ *         description: "lat,lng"
  *       - in: query
  *         name: radius
  *         schema:
  *           type: number
- *         description: Radius in km
+ *         description: "Radius in km"
  *       - in: query
  *         name: limit
  *         schema:
@@ -158,44 +173,210 @@ router.get("/mine", verifyFirebaseToken, async (req, res) => {
  *         description: List of pets
  */
 router.get("/", verifyFirebaseToken, async (req, res) => {
-  const {
-    species,
-    location,
-    radius,
-    limit = 20,
-    offset = 0,
-    search,
-  } = req.query;
+  try {
+    const {
+      species,
+      location,
+      radius,
+      limit = 20,
+      offset = 0,
+      search,
+    } = req.query as any;
 
-  const query: any = {};
-  if (species) query.species = species;
-  if (search) query.name = { $regex: search, $options: "i" };
+    const baseQuery: any = {};
+    if (species) baseQuery.species = species;
+    if (search) baseQuery.name = { $regex: search, $options: "i" };
+    baseQuery.$or = [{ isLost: true }, { isFound: true }];
 
-  let petsQuery = Pet.find(query);
+    // Helpers
+    const toNumber = (v: any) => (typeof v === "number" ? v : Number(v));
+    const KM_EARTH = 6371; // km
 
-  // Geo search if location & radius provided
-  if (location && radius) {
-    const [lat, lng] = (location as string).split(",").map(Number);
-    petsQuery = petsQuery.where("location.coordinates").near({
-      center: { type: "Point", coordinates: [lng, lat] },
-      maxDistance: Number(radius) * 1000,
-      spherical: true,
+    const haversineKm = (
+      lat1: number,
+      lng1: number,
+      lat2: number,
+      lng2: number
+    ) => {
+      const toRad = (x: number) => (x * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) *
+          Math.cos(toRad(lat2)) *
+          Math.sin(dLng / 2) *
+          Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return KM_EARTH * c;
+    };
+
+    const pickBestCoords = (pet: any): [number, number] | undefined => {
+      // return [lng, lat] with priority: found → lost → base
+      const found = pet?.foundDetails?.location;
+      const lost = pet?.lostDetails?.lastSeen;
+      const base = pet?.location;
+
+      const tryPoint = (obj: any): [number, number] | undefined => {
+        if (!obj) return;
+        // GeoJSON
+        if (
+          obj.coordinates?.type === "Point" &&
+          Array.isArray(obj.coordinates.coordinates)
+        ) {
+          const [lng, lat] = obj.coordinates.coordinates.map(Number);
+          if (
+            Number.isFinite(lat) &&
+            Number.isFinite(lng) &&
+            !(lat === 0 && lng === 0)
+          )
+            return [lng, lat];
+        }
+        // Plain array [lng, lat]
+        if (Array.isArray(obj.coordinates) && obj.coordinates.length === 2) {
+          const [lng, lat] = obj.coordinates.map(Number);
+          if (
+            Number.isFinite(lat) &&
+            Number.isFinite(lng) &&
+            !(lat === 0 && lng === 0)
+          )
+            return [lng, lat];
+        }
+        return;
+      };
+
+      return tryPoint(found) || tryPoint(lost) || tryPoint(base) || undefined;
+    };
+
+    // If no geo filter, keep old simple flow + pagination via Mongo
+    if (!location || !radius) {
+      const total = await Pet.countDocuments(baseQuery);
+      const pets = await Pet.find(baseQuery)
+        .skip(Number(offset))
+        .limit(Number(limit));
+
+      return res.json({
+        success: true,
+        pets,
+        pagination: {
+          total,
+          limit: Number(limit),
+          offset: Number(offset),
+          hasMore: total > Number(offset) + Number(limit),
+        },
+      });
+    }
+
+    // Parse geo filter
+    const [latStr, lngStr] = (location as string)
+      .split(",")
+      .map((s: string) => s.trim());
+    const lat = toNumber(latStr);
+    const lng = toNumber(lngStr);
+    const radiusKm = toNumber(radius);
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      !Number.isFinite(radiusKm)
+    ) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid location/radius" });
+    }
+
+    const centerPoint = {
+      type: "Point",
+      coordinates: [lng, lat] as [number, number],
+    };
+    const maxDistanceMeters = radiusKm * 1000;
+    const radiusRadians = radiusKm / KM_EARTH;
+
+    // Run three geo queries separately (MongoDB does not allow $near inside $or)
+    const [qBase, qFound, qLost] = await Promise.all([
+      // base location (GeoJSON Point)
+      Pet.find({
+        ...baseQuery,
+        "location.coordinates": {
+          $near: { $geometry: centerPoint, $maxDistance: maxDistanceMeters },
+        },
+      }),
+
+      // foundDetails.location (GeoJSON Point)
+      Pet.find({
+        ...baseQuery,
+        "foundDetails.location.coordinates": {
+          $near: { $geometry: centerPoint, $maxDistance: maxDistanceMeters },
+        },
+      }),
+
+      // lostDetails.lastSeen (legacy [lng,lat] array) — use $geoWithin/$centerSphere
+      Pet.find({
+        ...baseQuery,
+        "lostDetails.lastSeen.coordinates": {
+          $geoWithin: { $centerSphere: [[lng, lat], radiusRadians] },
+        },
+      }),
+    ]);
+
+    // Merge + de-dupe
+    const byId = new Map<string, any>();
+    for (const p of [...qBase, ...qFound, ...qLost]) {
+      byId.set(p._id.toString(), p);
+    }
+    const merged = Array.from(byId.values());
+
+    // Compute distance using best available coords (found → lost → base) and sort
+    const enriched = merged
+      .map((p) => {
+        const coords = pickBestCoords(p);
+        let distanceKm: number | undefined;
+        if (coords) {
+          const [plng, plat] = coords;
+          distanceKm = haversineKm(lat, lng, plat, plng);
+        }
+        return {
+          pet: p,
+          distanceKm,
+        };
+      })
+      .filter(
+        (x) => x.distanceKm === undefined || Number.isFinite(x.distanceKm)
+      )
+      .sort((a, b) => {
+        const da = a.distanceKm ?? Number.POSITIVE_INFINITY;
+        const db = b.distanceKm ?? Number.POSITIVE_INFINITY;
+        return da - db;
+      });
+
+    // Manual pagination
+    const total = enriched.length;
+    const start = Number(offset);
+    const end = start + Number(limit);
+    const page = enriched.slice(start, end).map(({ pet, distanceKm }) => {
+      const asObj = pet.toObject ? pet.toObject() : pet;
+      return {
+        ...asObj,
+        distance:
+          distanceKm != null ? `${distanceKm.toFixed(1)} km` : undefined,
+      };
     });
+
+    return res.json({
+      success: true,
+      pets: page,
+      pagination: {
+        total,
+        limit: Number(limit),
+        offset: Number(offset),
+        hasMore: total > end,
+      },
+    });
+  } catch (err: any) {
+    console.error("[GET /pets] error:", err);
+    res
+      .status(500)
+      .json({ success: false, error: err?.message || "Server error" });
   }
-
-  const total = await Pet.countDocuments(query);
-  const pets = await petsQuery.skip(Number(offset)).limit(Number(limit));
-
-  res.json({
-    success: true,
-    pets,
-    pagination: {
-      total,
-      limit: Number(limit),
-      offset: Number(offset),
-      hasMore: total > Number(offset) + Number(limit),
-    },
-  });
 });
 
 /**
@@ -256,17 +437,20 @@ router.get("/", verifyFirebaseToken, async (req, res) => {
  *               description:
  *                 type: string
  *                 example: "Very friendly and energetic"
+ *               phoneNumbers:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example: ["123-456-7890"]
+ *               email:
+ *                 type: string
+ *                 format: email
  *               isLost:
  *                 type: boolean
  *                 example: false
  *               isFound:
  *                 type: boolean
  *                 example: false
- *               phoneNumbers:
- *                 type: array
- *                 items:
- *                   type: string
- *                 example: ["123-456-7890"]
  *               address:
  *                 type: string
  *                 example: "123 Pet Street, New York, NY"
@@ -282,11 +466,47 @@ router.get("/", verifyFirebaseToken, async (req, res) => {
  *               microchipped:
  *                 type: boolean
  *                 example: true
+ *               lostDetails:
+ *                 type: object
+ *                 properties:
+ *                   dateLost:
+ *                     type: string
+ *                     format: date-time
+ *                   lastSeen:
+ *                     type: object
+ *                     properties:
+ *                       address:
+ *                         type: string
+ *                       coordinates:
+ *                         type: array
+ *                         items:
+ *                           type: number
+ *                         description: [lng, lat]
+ *                   notes:
+ *                     type: string
+ *               foundDetails:
+ *                 type: object
+ *                 properties:
+ *                   dateFound:
+ *                     type: string
+ *                     format: date-time
+ *                   location:
+ *                     type: object
+ *                     properties:
+ *                       address:
+ *                         type: string
+ *                       coordinates:
+ *                         type: array
+ *                         items:
+ *                           type: number
+ *                         description: [lng, lat]
+ *                   notes:
+ *                     type: string
  *           example:
  *             name: "Buddy"
  *             species: "dog"
  *             breed: "Golden Retriever"
- *             age: "3 years"
+ *             age: 3
  *             birthday: "2021-05-10"
  *             furColor: "golden"
  *             eyeColor: "brown"
@@ -296,103 +516,244 @@ router.get("/", verifyFirebaseToken, async (req, res) => {
  *             images:
  *               - "https://mypetapp.com/images/pet1.jpg"
  *             description: "Very friendly and energetic"
- *             isLost: false
- *             isFound: false
  *             phoneNumbers:
  *               - "123-456-7890"
+ *             email: "owner@example.com"
+ *             isLost: true
+ *             isFound: false
  *             address: "123 Pet Street, New York, NY"
  *             lat: 40.7128
  *             lng: -74.0060
  *             vaccinated: true
  *             microchipped: true
+ *             lostDetails:
+ *               dateLost: "2025-08-01T10:30:00.000Z"
+ *               lastSeen:
+ *                 address: "Herzl St 12, Tel Aviv"
+ *                 coordinates: [34.7778, 32.0662]
+ *               notes: "Blue collar, friendly"
+ *             foundDetails:
+ *               dateFound: null
+ *               location:
+ *                 address: ""
+ *                 coordinates: [0, 0]
+ *               notes: ""
  *     responses:
  *       201:
  *         description: Pet registered
  */
 router.post("/", verifyFirebaseToken, async (req, res) => {
   const user = (req as any).user;
-  const {
-    name,
-    species,
-    breed,
-    age,
-    birthday,
-    furColor,
-    eyeColor,
-    weight,
-    images,
-    description,
-    isLost,
-    isFound,
-    phoneNumbers,
-    address,
-    lat,
-    lng,
-    vaccinated,
-    microchipped,
-  } = req.body;
 
-  if (!name || !species) {
-    return res.status(400).json({ error: "name and species are required" });
-  }
+  // ---------- helpers ----------
+  const emptyToUndef = (v: any) =>
+    typeof v === "string" ? (v.trim() ? v.trim() : undefined) : v;
 
-  const parsedAge = typeof age === "string" ? parseFloat(age) : age;
+  const numOrUndef = (v: any) => {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
 
-  const pet = await Pet.create({
-    ownerId: user._id,
-    name,
-    species,
-    breed,
-    age: parsedAge || 0,
-    birthday,
-    furColor,
-    eyeColor,
-    weight: {
-      value: weight?.value || 0,
-      unit: weight?.unit || "kg",
-    },
-    images: images || [],
-    description,
-    isLost,
-    isFound,
-    phoneNumbers,
-    location: {
-      address: address || "",
-      coordinates: {
-        type: "Point",
-        coordinates: lng && lat ? [lng, lat] : [0, 0],
-      },
-    },
-    vaccinated,
-    microchipped,
+  const toISOorUndef = (v: any) => {
+    const s = emptyToUndef(v);
+    if (!s) return undefined;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? undefined : d.toISOString();
+  };
+
+  const ensureStringArray = (arr: any) =>
+    Array.isArray(arr) ? arr.filter((x) => typeof x === "string") : [];
+
+  const normalizePointFromLngLat = (
+    lng?: number,
+    lat?: number
+  ): { type: "Point"; coordinates: [number, number] } => ({
+    type: "Point",
+    coordinates:
+      typeof lng === "number" &&
+      typeof lat === "number" &&
+      !isNaN(lng) &&
+      !isNaN(lat)
+        ? [lng, lat]
+        : [0, 0],
   });
 
-  res.status(201).json({ success: true, pet });
-});
+  // Build GeoJSON from either [lng,lat] array or {lat,lng} object
+  const normalizePointFromInput = (input: any) => {
+    if (!input) return normalizePointFromLngLat(undefined, undefined);
 
-/**
- * @openapi
- * /pets/{id}:
- *   get:
- *     summary: Get pet details
- *     tags:
- *       - Pets
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Pet details
- */
-router.get("/:id", verifyFirebaseToken, async (req, res) => {
-  const pet = await Pet.findById(req.params.id).populate("ownerId");
-  if (!pet) return res.status(404).json({ error: "Pet not found" });
-  res.json({ success: true, pet });
+    if (Array.isArray(input.coordinates) && input.coordinates.length === 2) {
+      const [lng, lat] = input.coordinates.map(Number);
+      return normalizePointFromLngLat(lng, lat);
+    }
+
+    const lat =
+      typeof input.lat === "number"
+        ? input.lat
+        : typeof input.coordinates?.lat === "number"
+        ? input.coordinates.lat
+        : undefined;
+    const lng =
+      typeof input.lng === "number"
+        ? input.lng
+        : typeof input.coordinates?.lng === "number"
+        ? input.coordinates.lng
+        : undefined;
+
+    return normalizePointFromLngLat(
+      typeof lng === "string" ? Number(lng) : lng,
+      typeof lat === "string" ? Number(lat) : lat
+    );
+  };
+
+  try {
+    // ---------- raw body ----------
+    const {
+      name,
+      species,
+      breed,
+      age,
+      birthday,
+      furColor,
+      eyeColor,
+      weight,
+      images,
+      description,
+      isLost,
+      isFound,
+      phoneNumbers,
+      email,
+      address,
+      lat,
+      lng,
+      vaccinated,
+      microchipped,
+      lostDetails,
+      foundDetails,
+    } = req.body || {};
+
+    // ---------- required ----------
+    const safeName = emptyToUndef(name);
+    const safeSpecies = emptyToUndef(species);
+    if (!safeName || !safeSpecies) {
+      return res
+        .status(400)
+        .json({ success: false, error: "name and species are required" });
+    }
+
+    // ---------- scalars / strings ----------
+    const safeBreed = emptyToUndef(breed);
+    const safeFur = emptyToUndef(furColor);
+    const safeEye = emptyToUndef(eyeColor);
+    const safeDesc = emptyToUndef(description);
+    const safeEmail = emptyToUndef(email);
+
+    // ---------- numbers / dates ----------
+    const safeAge = numOrUndef(age);
+    const safeBirthdayISO = toISOorUndef(birthday);
+    const safeLat = numOrUndef(lat);
+    const safeLng = numOrUndef(lng);
+
+    // ---------- weight ----------
+    const safeWeight =
+      weight && numOrUndef(weight.value)
+        ? {
+            value: Number(weight.value),
+            unit: emptyToUndef(weight.unit) || "kg",
+          }
+        : undefined;
+
+    // ---------- arrays ----------
+    const safeImages = Array.isArray(images) ? images : [];
+    const safePhones = ensureStringArray(phoneNumbers);
+
+    // ---------- flags ----------
+    const safeIsLost = Boolean(isLost);
+    const safeIsFound = Boolean(isFound);
+    const safeVaccinated =
+      typeof vaccinated === "boolean" ? vaccinated : undefined;
+    const safeMicrochipped =
+      typeof microchipped === "boolean" ? microchipped : undefined;
+
+    // ---------- top-level location ----------
+    const safeLocation = {
+      address: emptyToUndef(address) || "",
+      coordinates: normalizePointFromLngLat(safeLng, safeLat),
+    };
+
+    // ---------- lostDetails (pass-through if has something) ----------
+    const safeLost =
+      lostDetails &&
+      (lostDetails.dateLost || lostDetails.lastSeen || lostDetails.notes)
+        ? {
+            dateLost: toISOorUndef(lostDetails.dateLost),
+            lastSeen: lostDetails.lastSeen
+              ? {
+                  address: emptyToUndef(lostDetails.lastSeen.address),
+                  coordinates: Array.isArray(lostDetails.lastSeen.coordinates)
+                    ? ([
+                        Number(lostDetails.lastSeen.coordinates[0]),
+                        Number(lostDetails.lastSeen.coordinates[1]),
+                      ] as [number, number])
+                    : undefined,
+                }
+              : undefined,
+            notes: emptyToUndef(lostDetails.notes),
+          }
+        : undefined;
+
+    // ---------- foundDetails (normalize location to GeoJSON Point) ----------
+    let safeFound: any = undefined;
+    if (
+      foundDetails &&
+      (foundDetails.dateFound || foundDetails.location || foundDetails.notes)
+    ) {
+      const loc = foundDetails.location || {};
+      const point = normalizePointFromInput(loc);
+
+      safeFound = {
+        dateFound: toISOorUndef(foundDetails.dateFound),
+        notes: emptyToUndef(foundDetails.notes),
+        location: {
+          address: emptyToUndef(loc.address) || "",
+          coordinates: point, // { type: 'Point', coordinates: [lng,lat] }
+        },
+      };
+    }
+
+    // ---------- create ----------
+    const pet = await Pet.create({
+      ownerId: user._id,
+      name: safeName,
+      species: safeSpecies,
+      breed: safeBreed,
+      age: typeof safeAge === "number" ? safeAge : 0,
+      birthday: safeBirthdayISO,
+      furColor: safeFur,
+      eyeColor: safeEye,
+      weight: safeWeight || { value: 0, unit: "kg" },
+      images: safeImages,
+      description: safeDesc,
+      isLost: safeIsLost,
+      isFound: safeIsFound,
+      phoneNumbers: safePhones,
+      email: safeEmail,
+      location: safeLocation,
+      vaccinated: safeVaccinated,
+      microchipped: safeMicrochipped,
+      lostDetails: safeLost,
+      foundDetails: safeFound,
+    });
+
+    return res.status(201).json({ success: true, pet });
+  } catch (err: any) {
+    // Always return a clean 400/500 with message to avoid silent 500s
+    console.error("[POST /pets] error:", err);
+    const code = err?.name === "ValidationError" ? 400 : 500;
+    return res
+      .status(code)
+      .json({ success: false, error: err?.message || "Server error" });
+  }
 });
 
 /**
@@ -416,6 +777,50 @@ router.get("/:id", verifyFirebaseToken, async (req, res) => {
  *         application/json:
  *           schema:
  *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               phoneNumbers:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               lostDetails:
+ *                 type: object
+ *                 properties:
+ *                   dateLost:
+ *                     type: string
+ *                     format: date-time
+ *                   lastSeen:
+ *                     type: object
+ *                     properties:
+ *                       address:
+ *                         type: string
+ *                       coordinates:
+ *                         type: array
+ *                         items:
+ *                           type: number
+ *                         description: [lng, lat]
+ *                   notes:
+ *                     type: string
+ *               foundDetails:
+ *                 type: object
+ *                 properties:
+ *                   dateFound:
+ *                     type: string
+ *                     format: date-time
+ *                   location:
+ *                     type: object
+ *                     properties:
+ *                       address:
+ *                         type: string
+ *                       coordinates:
+ *                         type: array
+ *                         items:
+ *                           type: number
+ *                         description: [lng, lat]
+ *                   notes:
+ *                     type: string
  *     responses:
  *       200:
  *         description: Updated pet
@@ -440,25 +845,87 @@ router.put("/:id", verifyFirebaseToken, async (req, res) => {
     "images",
     "description",
     "phoneNumbers",
+    "email",
     "vaccinated",
     "microchipped",
     "isLost",
     "isFound",
     "matchResults",
-  ];
+    "lostDetails",
+    "foundDetails",
+  ] as const;
 
   allowedUpdates.forEach((field) => {
-    if (req.body[field] !== undefined) {
-      (pet as any)[field] = req.body[field];
+    if ((req.body as any)[field] !== undefined) {
+      (pet as any)[field] = (req.body as any)[field];
     }
   });
 
-  if (req.body.lat && req.body.lng) {
+  // Normalize general location if provided via lat/lng
+  if (req.body.lat != null && req.body.lng != null) {
     pet.location = {
       address: req.body.address || pet.location?.address || "",
       coordinates: {
         type: "Point",
-        coordinates: [req.body.lng, req.body.lat],
+        coordinates: [Number(req.body.lng), Number(req.body.lat)],
+      },
+    };
+  }
+
+  // Normalize foundDetails.location if provided (supports array or {lat,lng})
+  const fd = req.body.foundDetails;
+  if (fd) {
+    // Ensure foundDetails + location objects exist
+    (pet as any).foundDetails ||= {};
+    (pet as any).foundDetails.location ||= {
+      address: "",
+      coordinates: { type: "Point", coordinates: [0, 0] as [number, number] },
+    };
+
+    const currentFD = (pet as any).foundDetails;
+    const locInput = fd.location || {};
+
+    // Build coords from either [lng,lat] or {lat,lng} (or keep existing)
+    let coords: [number, number] | undefined;
+    if (
+      Array.isArray(locInput.coordinates) &&
+      locInput.coordinates.length === 2
+    ) {
+      const [lng, lat] = locInput.coordinates.map(Number);
+      if (!Number.isNaN(lat) && !Number.isNaN(lng)) coords = [lng, lat];
+    } else {
+      const lat =
+        typeof locInput.lat === "number"
+          ? locInput.lat
+          : locInput?.coordinates?.lat;
+      const lng =
+        typeof locInput.lng === "number"
+          ? locInput.lng
+          : locInput?.coordinates?.lng;
+      if (
+        typeof lat === "number" &&
+        typeof lng === "number" &&
+        !Number.isNaN(lat) &&
+        !Number.isNaN(lng)
+      ) {
+        coords = [lng, lat];
+      }
+    }
+
+    // Merge all fields
+    (pet as any).foundDetails = {
+      ...currentFD,
+      ...fd,
+      location: {
+        address: locInput.address ?? currentFD.location.address ?? "",
+        coordinates: {
+          type: "Point",
+          coordinates: coords ??
+            (currentFD.location.coordinates?.coordinates as [
+              number,
+              number
+            ]) ?? [0, 0],
+        },
       },
     };
   }
@@ -579,7 +1046,7 @@ router.post("/match", verifyFirebaseToken, async (req, res) => {
       const score = computeMatchScore(lostPet, foundPet);
       return { lostPet, lostEntry: entry, score };
     })
-    .filter((match) => match.score >= 8) // Adjustable threshold
+    .filter((match) => match.score >= 3) // Adjustable threshold
     .sort((a, b) => b.score - a.score);
 
   res.json({ success: true, matches });
@@ -653,8 +1120,24 @@ router.post("/:id/confirm-match", verifyFirebaseToken, async (req, res) => {
 
   res.json({ success: true, message: "Match confirmed and others cleared" });
 });
+router.get("/:id", verifyFirebaseToken, async (req, res) => {
+  try {
+    const pet = await Pet.findById(req.params.id);
+    if (!pet)
+      return res.status(404).json({ success: false, error: "Pet not found" });
 
-export default router;
+    // If this endpoint is only for editing, keep it owner-only:
+    if (pet.ownerId?.toString() !== (req as any).user._id.toString()) {
+      return res.status(403).json({ success: false, error: "Forbidden" });
+    }
+
+    return res.json({ success: true, pet });
+  } catch (e: any) {
+    return res
+      .status(400)
+      .json({ success: false, error: e?.message || "Invalid id" });
+  }
+});
 
 /**
  * @openapi
@@ -672,21 +1155,52 @@ export default router;
 router.get("/matches", verifyFirebaseToken, async (req, res) => {
   const user = (req as any).user;
 
+  // Get all lost pets owned by the user
   const lostPets = await Pet.find({ ownerId: user._id, isLost: true });
 
-  const matchResults = lostPets.flatMap((pet) =>
-    (pet.matchResults || []).map((match) => ({
-      petId: pet._id,
-      petName: pet.name,
-      matchedPetId: match.petId,
-      score: match.score,
-      matchedAt: match.matchedAt,
-    }))
-  );
+  // Get all found pets not owned by the user
+  const foundPets = await Pet.find({
+    isFound: true,
+    isLost: false,
+    //ownerId: { $ne: user._id },
+  });
 
-  matchResults.sort(
+  const matches = [];
+
+  for (const lost of lostPets) {
+    for (const found of foundPets) {
+      const score = computeMatchScore(
+        lost.toObject?.() ?? lost,
+        found.toObject?.() ?? found
+      );
+      console.log(
+        "lost name:",
+        lost.name,
+        "\nfound name: ",
+        found.name,
+        "\n score: ",
+        score,
+        "\n\n"
+      );
+      if (score >= 3) {
+        matches.push({
+          petId: lost._id,
+          petName: lost.name,
+          matchedPetId: found._id,
+          matchedPetName: found.name,
+          score,
+          matchedAt: new Date().toISOString(),
+          foundPet: found.toObject?.() ?? found,
+        });
+      }
+    }
+  }
+
+  matches.sort(
     (a, b) => new Date(b.matchedAt).getTime() - new Date(a.matchedAt).getTime()
   );
 
-  res.json({ success: true, matches: matchResults });
+  res.json({ success: true, matches });
 });
+
+export default router;

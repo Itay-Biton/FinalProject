@@ -253,8 +253,7 @@ const createStyles = (width: number, colors: ThemeColors) =>
       marginBottom: verticalScale(24),
     },
     avatar: {
-      borderWidth: 3,
-      borderColor: colors.buttonColor,
+      backgroundColor: colors.background,
     },
     input: {
       width: '100%',

@@ -19,18 +19,27 @@ export interface BusinessLocation {
 
 // ─── WORKING HOURS ──────────────────────────────────────────────────────────
 export interface WorkingHours {
-  day: string; // "Monday", "Tuesday", etc.
+  day: string; // "Sunday", "Monday", etc.
   isOpen: boolean;
   openTime?: string; // "09:00"
   closeTime?: string; // "17:00"
 }
 
+// ─── OPTIONAL REVIEWS SUMMARY (some backends return this object) ────────────
+export interface ReviewsSummary {
+  avg: number; // average rating 1-5
+  count: number; // total number of reviews
+}
+
 // ─── BUSINESS MODEL ─────────────────────────────────────────────────────────
+// Backward-compatible base model + optional rating aggregates.
+// If your backend already flattens the aggregates, use ratingAverage/ratingCount;
+// if it nests them, keep reviewsSummary as well.
 export interface Business {
   _id: string;
   ownerId: string;
   name: string;
-  serviceType: string; // "veterinary", "grooming", etc.
+  serviceType: string; // "veterinarian", "grooming", etc.
   email?: string;
   phoneNumbers: string[];
   location: BusinessLocation;
@@ -43,6 +52,8 @@ export interface Business {
   isVerified: boolean;
   createdAt: string;
   updatedAt: string;
+  rating?: number | null;
+  reviewCount?: number;
 }
 
 // ─── REVIEW MODEL ───────────────────────────────────────────────────────────
@@ -89,7 +100,7 @@ export interface CreateBusinessRequest {
     address: string;
     coordinates?: {
       type: 'Point';
-      coordinates: [number, number];
+      coordinates: [number, number]; // [lng, lat]
     };
   };
   workingHours?: WorkingHours[];

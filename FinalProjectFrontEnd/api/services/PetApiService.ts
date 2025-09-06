@@ -20,103 +20,95 @@ class PetApiService {
   }
 
   // ─── MY PETS ────────────────────────────────────────────────────────────────
-
   async getMyPets(params?: {
     limit?: number;
     offset?: number;
   }): Promise<ApiResponse<MyPetsListResponse>> {
     const queryParams = new URLSearchParams();
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-    if (params?.offset) queryParams.append('offset', params.offset.toString());
+    if (params?.limit != null)
+      queryParams.append('limit', String(params.limit));
+    if (params?.offset != null)
+      queryParams.append('offset', String(params.offset));
 
     const endpoint = queryParams.toString()
       ? `${this.prefix}/mine?${queryParams.toString()}`
       : `${this.prefix}/mine`;
 
     const res = await this.apiClient.get<MyPetsListResponse>(endpoint);
-
-    if (!res.success || !res.data) {
-      return { success: false, error: res.error };
-    }
-
-    // Return the full response with pagination info
+    if (!res.success || !res.data) return { success: false, error: res.error };
     return { success: true, data: res.data };
   }
 
   // ─── SEARCH PETS ────────────────────────────────────────────────────────────
-
   async searchPets(
     params?: PetSearchParams,
   ): Promise<ApiResponse<PetListResponse>> {
     const queryParams = new URLSearchParams();
     if (params?.species) queryParams.append('species', params.species);
     if (params?.location) queryParams.append('location', params.location);
-    if (params?.radius) queryParams.append('radius', params.radius.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-    if (params?.offset) queryParams.append('offset', params.offset.toString());
+    if (params?.radius != null)
+      queryParams.append('radius', String(params.radius));
+    if (params?.limit != null)
+      queryParams.append('limit', String(params.limit));
+    if (params?.offset != null)
+      queryParams.append('offset', String(params.offset));
     if (params?.search) queryParams.append('search', params.search);
 
     const endpoint = queryParams.toString()
       ? `${this.prefix}?${queryParams.toString()}`
       : this.prefix;
-
     const res = await this.apiClient.get<PetListResponse>(endpoint);
-    console.log(res);
-
-    if (!res.success || !res.data) {
-      return { success: false, error: res.error };
-    }
-
-    // Return the full response with pagination info
+    if (!res.success || !res.data) return { success: false, error: res.error };
     return { success: true, data: res.data };
   }
 
   // ─── CREATE PET ─────────────────────────────────────────────────────────────
-
   async createPet(petData: CreatePetRequest): Promise<ApiResponse<Pet>> {
     const res = await this.apiClient.post<PetResponse>(this.prefix, petData);
-
-    if (!res.success || !res.data) {
-      return { success: false, error: res.error };
-    }
-
+    if (!res.success || !res.data) return { success: false, error: res.error };
     return { success: true, data: res.data.pet };
   }
 
   // ─── GET SINGLE PET ─────────────────────────────────────────────────────────
-
   async getPetById(petId: string): Promise<ApiResponse<Pet>> {
     const res = await this.apiClient.get<PetResponse>(
       `${this.prefix}/${petId}`,
     );
-
-    if (!res.success || !res.data) {
-      return { success: false, error: res.error };
-    }
-
+    if (!res.success || !res.data) return { success: false, error: res.error };
     return { success: true, data: res.data.pet };
   }
 
   // ─── UPDATE PET ─────────────────────────────────────────────────────────────
-
   async updatePet(
     petId: string,
     updateData: UpdatePetRequest,
   ): Promise<ApiResponse<Pet>> {
+    // server expects top-level address/lat/lng when updating location,
+    // and `lostDetails` object (which may include phoneNumbers) for lost info.
     const res = await this.apiClient.put<PetResponse>(
       `${this.prefix}/${petId}`,
       updateData,
     );
-
-    if (!res.success || !res.data) {
-      return { success: false, error: res.error };
-    }
-
+    if (!res.success || !res.data) return { success: false, error: res.error };
+    return { success: true, data: res.data.pet };
+  }
+  // ─── FOUND PET ─────────────────────────────────────────────────────────────
+  async foundMyPet(
+    // just update the isLost=false
+    petId: string,
+    updateData: UpdatePetRequest,
+  ): Promise<ApiResponse<Pet>> {
+    // server expects top-level address/lat/lng when updating location,
+    // and `lostDetails` object (which may include phoneNumbers) for lost info.
+    const res = await this.apiClient.put<PetResponse>(
+      `${this.prefix}/${petId}`,
+      updateData,
+    );
+    if (!res.success || !res.data) return { success: false, error: res.error };
     return { success: true, data: res.data.pet };
   }
 
   // ─── DELETE PET ─────────────────────────────────────────────────────────────
-
   async deletePet(petId: string): Promise<ApiResponse<{ message: string }>> {
     return this.apiClient.delete<{ success: boolean; message: string }>(
       `${this.prefix}/${petId}`,
@@ -124,40 +116,22 @@ class PetApiService {
   }
 
   // ─── MATCHING PETS ──────────────────────────────────────────────────────────
-
-  /**
-   * Find potential matches for a found pet
-   * @param foundPetData Partial<Pet>
-   */
   async findMatches(foundPetData: Partial<Pet>): Promise<ApiResponse<any>> {
-    const res = await this.apiClient.post('/pets/match', foundPetData);
-    return res;
+    return this.apiClient.post('/pets/match', foundPetData);
   }
 
-  /**
-   * Get match results for my lost pets
-   */
   async getMyMatches(): Promise<ApiResponse<any>> {
-    const res = await this.apiClient.get('/pets/matches');
-    return res;
+    return this.apiClient.get('/pets/matches');
   }
 
-  /**
-   * Confirm a match for a lost pet
-   * @param petId string
-   * @param matchedPetId string
-   */
   async confirmMatch(
     petId: string,
     matchedPetId: string,
   ): Promise<ApiResponse<{ message: string }>> {
-    const res = await this.apiClient.post<{ message: string }>(
+    return this.apiClient.post<{ message: string }>(
       `/pets/${petId}/confirm-match`,
-      {
-        matchedPetId,
-      },
+      { matchedPetId },
     );
-    return res;
   }
 }
 

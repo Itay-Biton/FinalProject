@@ -1,3 +1,4 @@
+// navigation/MainTabNavigation.tsx
 import React, { memo } from 'react';
 import {
   createBottomTabNavigator,
@@ -10,14 +11,18 @@ import { View, SafeAreaView, StyleSheet } from 'react-native';
 import { ThemeColors } from '../types/theme';
 import TabIconAnimation from '../components/Animations/TabIconAnimation';
 
-// Import screens/navigations
+// Navigators / screens
 import ProfileDrawerNavigation from './ProfileDrawerNavigation';
 import PostScreen from '../screens/Main/PostScreen';
 import SearchPetScreen from '../screens/Main/SearchPetScreen';
 import SearchBusinessScreen from '../screens/Main/SearchBusinessScreen';
 import PetActivityHistoryScreen from '../screens/Main/PetActivityHistoryScreen';
 
-// Import icons
+// 👇 add the Edit stack as a hidden tab target
+import EditPetNavigation, { EditPetStackParamList } from './EditPetNavigation';
+import { NavigatorScreenParams } from '@react-navigation/native';
+
+// Icons
 import ProfileIconSvg from '../assets/icons/ic_profile.svg';
 import PostIconSvg from '../assets/icons/ic_help_lost.svg';
 import SearchPetIconSvg from '../assets/icons/ic_pet.svg';
@@ -30,12 +35,19 @@ export type MainTabParamList = {
   SearchPet: undefined;
   SearchBusiness: undefined;
   History: undefined;
+
+  // Hidden route used for programmatic navigation to the edit flow
+  EditPetNavigation: NavigatorScreenParams<EditPetStackParamList>;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
   const { colors }: { colors: ThemeColors } = useTheme();
+
+  // 🔒 Hide the entire bar when the hidden Edit flow is focused
+  const active = state.routes[state.index]?.name;
+  if (active === 'EditPetNavigation') return null;
 
   const tabData = [
     { key: 'Profile', icon: ProfileIconSvg, name: 'Profile' },
@@ -60,6 +72,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
         ]}
       >
         {tabData.map((tab, index) => {
+          // Important: we only render visible tabs; hidden tab is defined last so indices align
           const route = state.routes[index];
           const isFocused = state.index === index;
 
@@ -91,7 +104,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
   );
 };
 
-// Define once, so its reference is stable between renders
+// Define once so the reference is stable between renders
 const renderCustomTabBar = (props: BottomTabBarProps) => (
   <CustomTabBar {...props} />
 );
@@ -104,6 +117,7 @@ const EnhancedMainTabNavigation: React.FC = memo(() => {
       tabBar={renderCustomTabBar}
       screenOptions={{ headerShown: false }}
     >
+      {/* Visible tabs */}
       <Tab.Screen
         name="Profile"
         component={ProfileDrawerNavigation}
@@ -131,14 +145,23 @@ const EnhancedMainTabNavigation: React.FC = memo(() => {
         component={PetActivityHistoryScreen}
         options={{ tabBarAccessibilityLabel: t('history_accessibility') }}
       />
+
+      {/* Hidden tab: lets you navigate with `navigation.navigate('EditPetNavigation', { screen: 'EditPetFirstStep', params: { petId } })` */}
+      <Tab.Screen
+        name="EditPetNavigation"
+        component={EditPetNavigation}
+        options={{
+          // Hidden from custom tab bar since we don't include it in tabData
+          // If you ever switch back to the default bar, this keeps it hidden there too:
+          tabBarButton: () => null,
+        }}
+      />
     </Tab.Navigator>
   );
 });
 
 const styles = StyleSheet.create({
-  safeArea: {
-    // backgroundColor applied inline
-  },
+  safeArea: {},
   tabBarContainer: {
     flexDirection: 'row',
     borderTopWidth: 1,
@@ -159,5 +182,4 @@ const styles = StyleSheet.create({
 });
 
 EnhancedMainTabNavigation.displayName = 'EnhancedMainTabNavigation';
-
 export default EnhancedMainTabNavigation;

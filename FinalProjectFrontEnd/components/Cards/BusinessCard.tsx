@@ -1,13 +1,6 @@
 // components/Cards/BusinessCard.tsx
-
-import React, { memo, useCallback } from 'react';
-import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  I18nManager,
-  Platform,
-} from 'react-native';
+import React, { memo, useCallback, useMemo } from 'react';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme, Text, Card, Chip, Divider } from 'react-native-paper';
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import { useTranslation } from 'react-i18next';
@@ -23,74 +16,14 @@ import EmailIconSvg from '../../assets/icons/ic_email2.svg';
 import RateIconSvg from '../../assets/icons/ic_star.svg';
 import NavigateIconSvg from '../../assets/icons/ic_navigate.svg';
 
-// Icon components
-const PhoneIcon = ({ color }: { color?: string }) => (
-  <PhoneIconSvg
-    width={moderateScale(16)}
-    height={moderateScale(16)}
-    stroke={color || 'black'}
-  />
-);
+type WorkingHours = {
+  day: string;
+  isOpen: boolean;
+  openTime?: string;
+  closeTime?: string;
+};
 
-const LocationIcon = ({ color }: { color?: string }) => (
-  <LocationIconSvg
-    width={moderateScale(16)}
-    height={moderateScale(16)}
-    stroke={color || 'black'}
-  />
-);
-
-const TimeIcon = ({ color }: { color?: string }) => (
-  <TimeIconSvg
-    width={moderateScale(16)}
-    height={moderateScale(16)}
-    stroke={color || 'black'}
-  />
-);
-
-const StarIcon = ({
-  color,
-  filled = false,
-}: {
-  color?: string;
-  filled?: boolean;
-}) => (
-  <StarIconSvg
-    width={moderateScale(16)}
-    height={moderateScale(16)}
-    fill={filled ? color || '#FFD700' : 'none'}
-    stroke={color || '#FFD700'}
-    strokeWidth={filled ? 0 : 2}
-  />
-);
-
-const EmailIcon = ({ color }: { color?: string }) => (
-  <EmailIconSvg
-    width={moderateScale(16)}
-    height={moderateScale(16)}
-    stroke={color || 'black'}
-  />
-);
-
-const RateIcon = ({ color }: { color?: string }) => (
-  <RateIconSvg
-    width={moderateScale(16)}
-    height={moderateScale(16)}
-    fill={color || '#FFD700'}
-    stroke={color || '#FFD700'}
-  />
-);
-
-const NavigateIcon = ({ color }: { color?: string }) => (
-  <NavigateIconSvg
-    width={moderateScale(16)}
-    height={moderateScale(16)}
-    stroke={color || 'black'}
-  />
-);
-
-// Business data interface
-interface Business {
+interface BusinessCardVM {
   id: string;
   name: string;
   serviceType: string;
@@ -98,9 +31,9 @@ interface Business {
   reviewCount: number;
   email: string;
   phoneNumbers: string[];
-  location: string;
+  location: string; // address text
   distance: string;
-  workingHours: string;
+  workingHours: WorkingHours[] | string;
   images: string[];
   description: string;
   services: string[];
@@ -108,9 +41,8 @@ interface Business {
   isVerified: boolean;
 }
 
-// Props interface
 interface BusinessCardProps {
-  business: Business;
+  business: BusinessCardVM;
   currentImageIndex: number;
   onImageIndexChange: (businessId: string, index: number) => void;
   onImageScroll: (event: any, businessId: string, imageCount: number) => void;
@@ -120,6 +52,186 @@ interface BusinessCardProps {
   onNavigate?: (businessId: string, businessName: string) => void;
   onViewReviews: (businessId: string, businessName: string) => void;
 }
+
+// --- Icon wrappers (outline for info rows) ---
+const LocationIcon = ({ color }: { color?: string }) => (
+  <LocationIconSvg
+    width={moderateScale(16)}
+    height={moderateScale(16)}
+    stroke={color || 'black'}
+  />
+);
+const TimeIcon = ({ color }: { color?: string }) => (
+  <TimeIconSvg
+    width={moderateScale(16)}
+    height={moderateScale(16)}
+    stroke={color || 'black'}
+  />
+);
+const EmailIcon = ({ color }: { color?: string }) => (
+  <EmailIconSvg
+    width={moderateScale(16)}
+    height={moderateScale(16)}
+    stroke={color || 'black'}
+  />
+);
+
+// Star icon (outline/filled used by rating)
+const StarIcon = ({
+  color,
+  filled = false,
+  size = 16,
+}: {
+  color?: string;
+  filled?: boolean;
+  size?: number;
+}) => (
+  <StarIconSvg
+    width={moderateScale(size)}
+    height={moderateScale(size)}
+    fill={filled ? color || '#FFD700' : 'none'}
+    stroke={color || '#FFD700'}
+    strokeWidth={filled ? 0 : 2}
+  />
+);
+
+// Solid icons for buttons (no stroke; seamless)
+const SolidPhoneIcon = ({ color }: { color?: string }) => (
+  <PhoneIconSvg
+    width={moderateScale(16)}
+    height={moderateScale(16)}
+    fill={color || 'white'}
+    stroke="none"
+  />
+);
+const SolidEmailIcon = ({ color }: { color?: string }) => (
+  <EmailIconSvg
+    width={moderateScale(16)}
+    height={moderateScale(16)}
+    fill={color || 'white'}
+    stroke="none"
+  />
+);
+const SolidRateIcon = ({ color }: { color?: string }) => (
+  <RateIconSvg
+    width={moderateScale(16)}
+    height={moderateScale(16)}
+    fill={color || 'white'}
+    stroke="none"
+  />
+);
+const SolidNavigateIcon = ({ color }: { color?: string }) => (
+  <NavigateIconSvg
+    width={moderateScale(16)}
+    height={moderateScale(16)}
+    fill={color || 'white'}
+    stroke="none"
+  />
+);
+
+// StarRating with half-star overlay (clip)
+const StarRating = ({
+  rating,
+  size = 16,
+  color = '#FFD700',
+  gap = 4,
+}: {
+  rating: number;
+  size?: number;
+  color?: string;
+  gap?: number;
+}) => {
+  const rounded = Math.max(0, Math.min(5, Math.round(rating * 2) / 2));
+  const percent = `${(rounded / 5) * 100}%`;
+  const stars = Array.from({ length: 5 }, (_, i) => i);
+
+  return (
+    <View
+      style={{
+        position: 'relative',
+        height: moderateScale(size),
+        flexDirection: 'row',
+      }}
+    >
+      {/* outline row */}
+      <View style={{ flexDirection: 'row' }}>
+        {stars.map(i => (
+          <View key={`outline-${i}`} style={{ marginRight: i < 4 ? gap : 0 }}>
+            <StarIcon size={size} color={color} filled={false} />
+          </View>
+        ))}
+      </View>
+      {/* clipped filled row */}
+      <View
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: percent,
+          overflow: 'hidden',
+          flexDirection: 'row',
+        }}
+        pointerEvents="none"
+      >
+        {stars.map(i => (
+          <View key={`filled-${i}`} style={{ marginRight: i < 4 ? gap : 0 }}>
+            <StarIcon size={size} color={color} filled />
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+};
+
+// Normalize to full week for display
+const useNormalizedHours = (workingHours: WorkingHours[] | string) => {
+  const WEEK_DAYS = [
+    'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+  ];
+  if (Array.isArray(workingHours)) {
+    return WEEK_DAYS.map(day => {
+      const found = workingHours.find(h => h?.day === day);
+      return found
+        ? {
+            day,
+            isOpen: !!found.isOpen,
+            openTime: found.openTime,
+            closeTime: found.closeTime,
+          }
+        : { day, isOpen: false as const };
+    });
+  }
+  return WEEK_DAYS.map(day => ({ day, isOpen: false as const }));
+};
+
+// Day i18n (supports either "days.monday" or "monday" keys)
+const useDayLabel = () => {
+  const { t } = useTranslation();
+  return useCallback(
+    (dayEn: string) => {
+      const key = dayEn.toLowerCase();
+      const viaScoped = t(`days.${key}`, { defaultValue: '' });
+      if (
+        viaScoped &&
+        viaScoped.trim().length > 0 &&
+        viaScoped !== `days.${key}`
+      )
+        return viaScoped;
+      const viaFlat = t(key, { defaultValue: '' });
+      if (viaFlat && viaFlat.trim().length > 0 && viaFlat !== key)
+        return viaFlat;
+      return dayEn;
+    },
+    [t],
+  );
+};
 
 const BusinessCard: React.FC<BusinessCardProps> = memo(
   ({
@@ -135,42 +247,31 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
   }) => {
     const { colors }: { colors: ThemeColors } = useTheme();
     const { t } = useTranslation();
+    const styles = useMemo(() => createStyles(colors), [colors]);
 
-    const renderStars = useCallback((rating: number) => {
-      const stars = [];
-      const fullStars = Math.floor(rating);
-      const hasHalfStar = rating % 1 !== 0;
+    const displayRating = Number.isFinite(business.rating)
+      ? business.rating
+      : 0;
+    const displayCount = Number.isFinite(business.reviewCount)
+      ? business.reviewCount
+      : 0;
+    const hasRating = displayCount > 0 && displayRating > 0;
 
-      for (let i = 0; i < fullStars; i++) {
-        stars.push(<StarIcon key={`full-${i}`} color="#FFD700" filled />);
-      }
-      if (hasHalfStar) {
-        stars.push(<StarIcon key="half" color="#FFD700" filled />);
-      }
-      const emptyStars = 5 - Math.ceil(rating);
-      for (let i = 0; i < emptyStars; i++) {
-        stars.push(<StarIcon key={`empty-${i}`} color="#FFD700" />);
-      }
-      return stars;
-    }, []);
+    const hours = useNormalizedHours(business.workingHours);
+    const dayLabel = useDayLabel();
 
     const handleViewReviews = useCallback(() => {
       onViewReviews(business.id, business.name);
     }, [business.id, business.name, onViewReviews]);
 
     const handleNavigate = useCallback(() => {
-      if (onNavigate) {
-        onNavigate(business.id, business.name);
-      } else {
-        onRate(business.id, business.name);
-      }
+      if (onNavigate) onNavigate(business.id, business.name);
+      else onRate(business.id, business.name);
     }, [business.id, business.name, onNavigate, onRate]);
-
-    const styles = createStyles(colors);
 
     return (
       <Card style={styles.businessCard} mode="outlined">
-        {/* Image Slider */}
+        {/* Images */}
         <View style={styles.imageSliderContainer}>
           <BusinessImageSlider
             images={business.images}
@@ -182,75 +283,84 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
         </View>
 
         <Card.Content style={styles.cardContent}>
-          {/* Header */}
-          <View style={styles.businessHeader}>
-            <View style={styles.businessTitleContainer}>
+          {/* Header row: LEFT -> name (+ verified underneath) | RIGHT -> distance + open/closed */}
+          <View style={styles.headerRow}>
+            {/* LEFT */}
+            <View style={styles.headerLeft}>
               <Text style={styles.businessName} numberOfLines={2}>
                 {business.name}
               </Text>
-              <View style={styles.businessMeta}>
-                <View style={styles.leftSection}>
-                  {business.isVerified && (
-                    <View style={styles.verifiedBadge}>
-                      <Text style={styles.verifiedText}>✓ {t('verified')}</Text>
-                    </View>
-                  )}
+
+              {/* VERIFIED shown UNDER the name */}
+              {business.isVerified ? (
+                <View style={styles.verifiedRow}>
+                  <View style={styles.verifiedBadge}>
+                    <Text style={styles.verifiedText}>✓ {t('verified')}</Text>
+                  </View>
                 </View>
-                <View style={styles.statusContainer}>
-                  <Chip
-                    style={[
-                      styles.statusChip,
-                      business.isOpen
-                        ? styles.openStatusChip
-                        : styles.closedStatusChip,
-                    ]}
-                    textStyle={[
-                      styles.statusChipText,
-                      business.isOpen
-                        ? styles.openStatusText
-                        : styles.closedStatusText,
-                    ]}
-                    compact
-                  >
-                    {business.isOpen ? t('open') : t('closed')}
-                  </Chip>
-                  <Text style={styles.distanceText}>{business.distance}</Text>
-                </View>
-              </View>
+              ) : (
+                <View style={styles.verifiedSpacer} />
+              )}
+            </View>
+
+            {/* RIGHT */}
+            <View style={styles.headerRight}>
+              <Text style={styles.distanceText}>{business.distance}</Text>
+              <Chip
+                style={[
+                  styles.statusChip,
+                  business.isOpen
+                    ? styles.openStatusChip
+                    : styles.closedStatusChip,
+                ]}
+                textStyle={[
+                  styles.statusChipText,
+                  business.isOpen
+                    ? styles.openStatusText
+                    : styles.closedStatusText,
+                ]}
+                compact
+              >
+                {business.isOpen ? t('open') : t('closed')}
+              </Chip>
             </View>
           </View>
 
-          {/* Rating / Reviews Row */}
+          {/* Rating / Reviews — seamless button (no stroke/bg) */}
           <TouchableOpacity
             style={styles.ratingRow}
             onPress={handleViewReviews}
             activeOpacity={0.7}
           >
             <View style={styles.starsContainer}>
-              {business.rating > 0 ? (
-                renderStars(business.rating)
+              {hasRating ? (
+                <StarRating
+                  rating={displayRating}
+                  size={16}
+                  color="#FFD700"
+                  gap={4}
+                />
               ) : (
                 <Text style={styles.noRatingText}>{t('no_rating')}</Text>
               )}
             </View>
             <View style={styles.ratingTextContainer}>
-              {business.rating > 0 ? (
+              {hasRating ? (
                 <Text style={styles.ratingText}>
-                  {Math.ceil(business.rating)} ({business.reviewCount}{' '}
-                  {t('reviews')})
+                  {displayRating.toFixed(1)} ({displayCount} {t('reviews')})
                 </Text>
               ) : (
                 <Text style={styles.ratingText}>{t('no_reviews_yet')}</Text>
               )}
               <Text style={styles.viewReviewsHint}>
-                {business.reviewCount > 0
+                {displayCount > 0
                   ? t('tap_to_view_reviews')
                   : t('be_the_first_to_review')}
               </Text>
             </View>
           </TouchableOpacity>
 
-          {/* Info Grid */}
+          {/* Address */}
           <View style={styles.businessInfoGrid}>
             <View style={styles.infoItem}>
               <LocationIcon color={colors.primary} />
@@ -258,19 +368,49 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
                 {business.location}
               </Text>
             </View>
-            <View style={styles.infoItem}>
+          </View>
+
+          {/* Working hours — one row per day, translated day label */}
+          <View style={styles.hoursBlock}>
+            <View style={styles.hoursHeader}>
               <TimeIcon color={colors.primary} />
-              <Text style={styles.infoText} numberOfLines={1}>
-                {business.workingHours}
+              <Text style={styles.hoursTitle}>
+                {t('working_hours') || 'Hours'}
               </Text>
             </View>
+
+            {hours.map((h, idx) => (
+              <View
+                key={h.day}
+                style={[
+                  styles.hourRow,
+                  idx < hours.length - 1 && styles.hourRowDivider,
+                ]}
+              >
+                <Text style={styles.hourDay}>{dayLabel(h.day)}</Text>
+                <View style={styles.hourDot} />
+                {h.isOpen ? (
+                  <Text style={styles.hourTime}>
+                    {h.openTime || '00:00'} – {h.closeTime || '00:00'}
+                  </Text>
+                ) : (
+                  <Text style={styles.hourClosed}>
+                    {t('closed') || 'Closed'}
+                  </Text>
+                )}
+              </View>
+            ))}
+          </View>
+
+          {/* Email (optional) */}
+          {!!business.email && (
             <View style={styles.infoItem}>
               <EmailIcon color={colors.primary} />
               <Text style={styles.infoText} numberOfLines={1}>
                 {business.email}
               </Text>
             </View>
-          </View>
+          )}
 
           {/* Description */}
           <View style={styles.descriptionContainer}>
@@ -281,7 +421,7 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
 
           <Divider style={styles.divider} />
 
-          {/* Contact Buttons */}
+          {/* Actions */}
           <View style={styles.contactSection}>
             <View style={styles.contactButtons}>
               <TouchableOpacity
@@ -289,34 +429,37 @@ const BusinessCard: React.FC<BusinessCardProps> = memo(
                 onPress={() => onCall(business.phoneNumbers, business.name)}
               >
                 <View style={styles.contactButtonContent}>
-                  <PhoneIcon color={colors.buttonTextColor} />
+                  <SolidPhoneIcon color={colors.buttonTextColor} />
                   <Text style={styles.contactButtonText}>{t('call')}</Text>
                 </View>
               </TouchableOpacity>
+
               <TouchableOpacity
                 style={styles.contactButton}
                 onPress={() => onEmail(business.email)}
               >
                 <View style={styles.contactButtonContent}>
-                  <EmailIcon color={colors.buttonTextColor} />
+                  <SolidEmailIcon color={colors.buttonTextColor} />
                   <Text style={styles.contactButtonText}>{t('email')}</Text>
                 </View>
               </TouchableOpacity>
+
               <TouchableOpacity
                 style={styles.contactButton}
                 onPress={() => onRate(business.id, business.name)}
               >
                 <View style={styles.contactButtonContent}>
-                  <RateIcon color={colors.buttonTextColor} />
+                  <SolidRateIcon color={colors.buttonTextColor} />
                   <Text style={styles.contactButtonText}>{t('rate')}</Text>
                 </View>
               </TouchableOpacity>
+
               <TouchableOpacity
                 style={styles.contactButton}
                 onPress={handleNavigate}
               >
                 <View style={styles.contactButtonContent}>
-                  <NavigateIcon color={colors.buttonTextColor} />
+                  <SolidNavigateIcon color={colors.buttonTextColor} />
                   <Text style={styles.contactButtonText}>{t('navigate')}</Text>
                 </View>
               </TouchableOpacity>
@@ -345,139 +488,162 @@ const createStyles = (colors: ThemeColors) =>
       borderTopRightRadius: moderateScale(16),
       overflow: 'hidden',
     },
-    cardContent: {
-      padding: scale(20),
-    },
-    businessHeader: {
+    cardContent: { padding: scale(20) },
+
+    // HEADER
+    headerRow: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
       alignItems: 'flex-start',
-      marginBottom: verticalScale(16),
+      justifyContent: 'space-between',
+      marginBottom: verticalScale(12),
     },
-    businessTitleContainer: {
+    headerLeft: {
       flex: 1,
+      paddingRight: scale(10),
     },
     businessName: {
       fontSize: moderateScale(20),
       fontWeight: '700',
       color: colors.primary,
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
-      marginBottom: verticalScale(8),
     },
-    businessMeta: {
-      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
+    verifiedRow: {
+      marginTop: verticalScale(6),
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: scale(8),
     },
-    leftSection: {
-      flexDirection: 'column',
-      alignItems: I18nManager.isRTL ? 'flex-end' : 'flex-start',
+    verifiedSpacer: {
+      height: verticalScale(6), // keeps spacing consistent when not verified
     },
     verifiedBadge: {
       backgroundColor: '#4CAF50' + '15',
       paddingHorizontal: scale(8),
       paddingVertical: verticalScale(2),
       borderRadius: moderateScale(8),
-      marginBottom: verticalScale(4),
     },
     verifiedText: {
       fontSize: moderateScale(11),
       color: '#4CAF50',
       fontWeight: '600',
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
-    statusContainer: {
-      alignItems: I18nManager.isRTL ? 'flex-start' : 'flex-end',
+
+    headerRight: {
+      alignItems: 'flex-end',
+      maxWidth: '45%',
+      gap: verticalScale(6),
     },
-    statusChip: {
-      alignSelf: I18nManager.isRTL ? 'flex-start' : 'flex-end',
-      marginBottom: verticalScale(4),
-    },
-    openStatusChip: {
-      backgroundColor: '#4CAF50' + '15',
-    },
-    closedStatusChip: {
-      backgroundColor: '#FF5722' + '15',
-    },
-    statusChipText: {
-      fontSize: moderateScale(12),
-      fontWeight: '600',
-    },
-    openStatusText: {
-      color: '#4CAF50',
-    },
-    closedStatusText: {
-      color: '#FF5722',
-    },
+    statusChip: {},
+    openStatusChip: { backgroundColor: '#4CAF50' + '15' },
+    closedStatusChip: { backgroundColor: '#FF5722' + '15' },
+    statusChipText: { fontSize: moderateScale(12), fontWeight: '600' },
+    openStatusText: { color: '#4CAF50' },
+    closedStatusText: { color: '#FF5722' },
     distanceText: {
       fontSize: moderateScale(12),
       color: colors.rangeTextColor,
       fontWeight: '500',
-      textAlign: I18nManager.isRTL ? 'left' : 'right',
+      textAlign: 'right',
     },
+
+    // Seamless rating button
     ratingRow: {
-      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+      flexDirection: 'row',
       alignItems: 'center',
+      backgroundColor: 'transparent',
       marginBottom: verticalScale(16),
-      backgroundColor: colors.background,
       padding: scale(12),
       borderRadius: moderateScale(8),
-      borderWidth: 1,
-      borderColor: colors.outline + '30',
-      shadowColor: colors.primary,
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 2,
-      elevation: 1,
     },
-    starsContainer: {
-      flexDirection: 'row',
-      marginRight: I18nManager.isRTL ? 0 : scale(8),
-      marginLeft: I18nManager.isRTL ? scale(8) : 0,
-    },
-    ratingTextContainer: {
-      flex: 1,
-    },
+    starsContainer: { flexDirection: 'row', marginRight: scale(8) },
+    ratingTextContainer: { flex: 1 },
     ratingText: {
       fontSize: moderateScale(14),
       color: colors.onSurfaceVariant,
       fontWeight: '500',
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     noRatingText: {
       fontSize: moderateScale(14),
       color: colors.onSurfaceVariant,
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
       fontStyle: 'italic',
     },
     viewReviewsHint: {
       fontSize: moderateScale(12),
       color: colors.primary,
       marginTop: verticalScale(2),
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
       fontWeight: '500',
       opacity: 0.8,
     },
-    businessInfoGrid: {
-      marginBottom: verticalScale(16),
-    },
+
+    // Info
+    businessInfoGrid: { marginBottom: verticalScale(8) },
     infoItem: {
-      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+      flexDirection: 'row',
       alignItems: 'center',
       marginBottom: verticalScale(8),
     },
     infoText: {
       fontSize: moderateScale(14),
       color: colors.onSurface,
-      marginLeft: I18nManager.isRTL ? 0 : scale(8),
-      marginRight: I18nManager.isRTL ? scale(8) : 0,
+      marginLeft: scale(8),
       flex: 1,
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
+
+    // Hours
+    hoursBlock: {
+      marginTop: verticalScale(4),
+      marginBottom: verticalScale(8),
+    },
+    hoursHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: verticalScale(8),
+    },
+    hoursTitle: {
+      fontSize: moderateScale(14),
+      fontWeight: '600',
+      color: colors.onSurface,
+      marginLeft: scale(8),
+    },
+    hourRow: {
+      marginLeft: scale(20),
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: verticalScale(6),
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.outline + '40',
+    },
+    hourRowDivider: {},
+    hourDay: {
+      width: scale(90),
+      fontSize: moderateScale(13),
+      color: colors.onSurface,
+      fontWeight: '600',
+    },
+    hourDot: {
+      width: scale(4),
+      height: scale(4),
+      borderRadius: scale(2),
+      backgroundColor: colors.onSurfaceVariant,
+      marginHorizontal: scale(8),
+      opacity: 0.5,
+    },
+    hourTime: {
+      fontSize: moderateScale(13),
+      color: colors.onSurfaceVariant,
+      flexShrink: 1,
+    },
+    hourClosed: {
+      fontSize: moderateScale(13),
+      color: colors.error || colors.onSurfaceVariant,
+      fontWeight: '600',
+    },
+
+    // Description & divider
     descriptionContainer: {
       backgroundColor: colors.background,
       borderRadius: moderateScale(12),
       padding: scale(12),
+      marginTop: verticalScale(8),
       marginBottom: verticalScale(16),
     },
     businessDescription: {
@@ -485,24 +651,22 @@ const createStyles = (colors: ThemeColors) =>
       color: colors.onSurface,
       lineHeight: verticalScale(20),
       fontStyle: 'italic',
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
     divider: {
       marginVertical: verticalScale(12),
       backgroundColor: colors.outline,
     },
-    contactSection: {
-      marginTop: verticalScale(8),
-    },
+
+    // Actions
+    contactSection: { marginTop: verticalScale(8) },
     contactButtons: {
-      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+      flexDirection: 'row',
       justifyContent: 'space-between',
       flexWrap: 'wrap',
     },
     contactButton: {
       flex: 1,
-      marginRight: I18nManager.isRTL ? 0 : scale(4),
-      marginLeft: I18nManager.isRTL ? scale(4) : 0,
+      marginRight: scale(4),
       marginBottom: verticalScale(8),
       minWidth: scale(90),
       borderRadius: moderateScale(8),
@@ -511,7 +675,7 @@ const createStyles = (colors: ThemeColors) =>
       backgroundColor: colors.buttonColor,
     },
     contactButtonContent: {
-      flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -519,11 +683,9 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: moderateScale(14),
       fontWeight: '600',
       color: colors.buttonTextColor,
-      marginLeft: I18nManager.isRTL ? 0 : scale(6),
-      marginRight: I18nManager.isRTL ? scale(6) : 0,
+      marginLeft: scale(6),
     },
   });
 
 BusinessCard.displayName = 'BusinessCard';
-
 export default BusinessCard;

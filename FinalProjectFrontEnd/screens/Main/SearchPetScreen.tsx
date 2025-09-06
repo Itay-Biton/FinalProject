@@ -30,27 +30,20 @@ import PhoneNumberPickerModal from '../../components/Modals/PhoneNumberPickerMod
 import AlertModal from '../../components/Modals/AlertModal';
 import SnakeSlider from '../../components/UI/SnakeSlider';
 import { RouteMapModal } from '../../components/Modals/RouteMapModal';
+import PetDetailsModal from '../../components/Modals/PetDetailsModal';
 
-// Location permissions
 import { useLocationPermission } from '../../utils/LocationPermissions';
-
-// Constants
 import { getSpeciesList } from '../../constants/speciesList';
-
-// ViewModel
 import { usePetSearchViewModel } from '../../viewModels/PetSearchViewModel';
-
-// Types
 import { Pet } from '../../types/pet';
 
-// Icons - MOVED OUTSIDE OF COMPONENT
+// Icons
 import SearchIconSvg from '../../assets/icons/ic_search.svg';
 import LocationIconSvg from '../../assets/icons/ic_location.svg';
 import FilterIconSvg from '../../assets/icons/ic_filter.svg';
 import SpeciesIconSvg from '../../assets/icons/ic_species.svg';
 import CheckIconSvg from '../../assets/icons/ic_save.svg';
 
-// Icon components - MOVED OUTSIDE OF COMPONENT
 const SearchIcon = ({ color }: { color?: string }) => (
   <SearchIconSvg
     width={moderateScale(20)}
@@ -58,7 +51,6 @@ const SearchIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const LocationIcon = ({ color }: { color?: string }) => (
   <LocationIconSvg
     width={moderateScale(24)}
@@ -66,7 +58,6 @@ const LocationIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const FilterIcon = ({ color }: { color?: string }) => (
   <FilterIconSvg
     width={moderateScale(20)}
@@ -74,7 +65,6 @@ const FilterIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const SpeciesIcon = ({ color }: { color?: string }) => (
   <SpeciesIconSvg
     width={moderateScale(20)}
@@ -82,7 +72,6 @@ const SpeciesIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const CheckIcon = ({ color }: { color?: string }) => (
   <CheckIconSvg
     width={moderateScale(16)}
@@ -91,15 +80,12 @@ const CheckIcon = ({ color }: { color?: string }) => (
   />
 );
 
-// Icon render functions - MOVED OUTSIDE OF COMPONENT
 const renderFilterIcon = (color: string) => () => <FilterIcon color={color} />;
 
-// Coordinate interface for navigation
 interface Coordinate {
   latitude: number;
   longitude: number;
 }
-
 interface LocationData {
   id: string;
   title: string;
@@ -107,11 +93,118 @@ interface LocationData {
   lon: string;
 }
 
-interface SearchPetsScreenProps {
-  // Remove navigation prop since we don't need back button
-}
+/* -----------------------  HELPERS  ----------------------- */
 
-const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
+/** Validate and normalize any location-like input to [lng,lat].
+ *  Rejects:
+ *   - non-numeric
+ *   - out of range (lat ∉ [-90,90], lng ∉ [-180,180])
+ *   - [0,0]
+ */
+const extractLngLat = (raw: any): [number, number] | undefined => {
+  const norm = (lng?: number, lat?: number) => {
+    if (
+      typeof lng === 'number' &&
+      typeof lat === 'number' &&
+      !Number.isNaN(lng) &&
+      !Number.isNaN(lat) &&
+      Math.abs(lat) <= 90 &&
+      Math.abs(lng) <= 180 &&
+      !(lng === 0 && lat === 0)
+    ) {
+      return [lng, lat] as [number, number];
+    }
+    return undefined;
+  };
+
+  if (!raw) return undefined;
+
+  // [lng, lat]
+  if (Array.isArray(raw) && raw.length === 2) {
+    return norm(Number(raw[0]), Number(raw[1]));
+  }
+
+  // GeoJSON { type:'Point', coordinates:[lng,lat] }
+  if (
+    raw?.type === 'Point' &&
+    Array.isArray(raw.coordinates) &&
+    raw.coordinates.length === 2
+  ) {
+    return norm(Number(raw.coordinates[0]), Number(raw.coordinates[1]));
+  }
+
+  // { coordinates:[lng,lat] } (or { coordinates: { coordinates:[lng,lat] } } handled by caller)
+  if (Array.isArray(raw?.coordinates) && raw.coordinates.length === 2) {
+    return norm(Number(raw.coordinates[0]), Number(raw.coordinates[1]));
+  }
+
+  // { lat, lng } or { coordinates: { lat, lng } }
+  const lat = typeof raw?.lat === 'number' ? raw.lat : raw?.coordinates?.lat;
+  const lng = typeof raw?.lng === 'number' ? raw.lng : raw?.coordinates?.lng;
+
+  return norm(lng, lat);
+};
+
+/** Prefer foundDetails → lostDetails → base, but only if coords are valid (not 0,0).
+ *  If a tier has no valid coords, fall back to the next tier.
+ */
+const pickBestLocation = (
+  pet: any,
+): {
+  kind: 'found' | 'lost' | 'base' | null;
+  address?: string;
+  coords?: [number, number];
+  date?: string;
+  notes?: string;
+} => {
+  // FOUND
+  const fAddr = pet?.foundDetails?.location?.address;
+  const fCoords =
+    extractLngLat(pet?.foundDetails?.location?.coordinates) ??
+    extractLngLat(pet?.foundDetails?.location) ??
+    extractLngLat(pet?.foundDetails);
+  if (fCoords) {
+    return {
+      kind: 'found',
+      address: fAddr,
+      coords: fCoords,
+      date: pet?.foundDetails?.dateFound,
+      notes: pet?.foundDetails?.notes,
+    };
+  }
+
+  // LOST
+  const lAddr = pet?.lostDetails?.lastSeen?.address;
+  const lCoords =
+    extractLngLat(pet?.lostDetails?.lastSeen?.coordinates) ??
+    extractLngLat(pet?.lostDetails?.lastSeen) ??
+    extractLngLat(pet?.lostDetails);
+  if (lCoords) {
+    return {
+      kind: 'lost',
+      address: lAddr,
+      coords: lCoords,
+      date: pet?.lostDetails?.dateLost,
+      notes: pet?.lostDetails?.notes,
+    };
+  }
+
+  // BASE
+  const bAddr = pet?.location?.address;
+  const bCoords =
+    extractLngLat(pet?.location?.coordinates?.coordinates) ??
+    extractLngLat(pet?.location?.coordinates) ??
+    extractLngLat(pet?.location);
+  if (bCoords) {
+    return { kind: 'base', address: bAddr, coords: bCoords };
+  }
+
+  return { kind: null };
+};
+
+/* --------------------------------------------------------- */
+
+const SearchPetsScreen: React.FC = memo(() => {
   const { width, height } = useWindowDimensions();
   const { colors }: { colors: ThemeColors } = useTheme();
   const { t } = useTranslation();
@@ -132,33 +225,30 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
     refreshPets,
     loadMorePets,
     setFilters,
-    getFilters,
-    clearSearch,
   } = usePetSearchViewModel();
 
-  // Helper functions for formatting with translations
+  // Formatters (keep original shapes for PetCard)
   const formatAge = useCallback(
     (age: string | number) => {
-      const numAge = typeof age === 'string' ? parseFloat(age) || 0 : age;
-      const formattedAge =
+      const numAge = typeof age === 'string' ? parseFloat(age) || 0 : age ?? 0;
+      const formatted =
         numAge % 1 === 0 ? numAge.toString() : numAge.toFixed(1);
-      return `${formattedAge} ${t('years')}`;
+      return `${formatted} ${t('years')}`;
     },
     [t],
   );
 
   const formatWeight = useCallback(
-    (weight: { value: number; unit: string }) => {
-      const formattedWeight =
-        weight.value % 1 === 0
-          ? weight.value.toString()
-          : weight.value.toFixed(1);
-      return `${formattedWeight} ${t(weight.unit)}`;
+    (weight?: { value?: number; unit?: string }) => {
+      const val = Number(weight?.value ?? 0);
+      const u = weight?.unit || 'kg';
+      const formatted = val % 1 === 0 ? val.toString() : val.toFixed(1);
+      return `${formatted} ${t(u)}`;
     },
     [t],
   );
 
-  // State management
+  // State
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecies, setSelectedSpecies] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
@@ -166,18 +256,18 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
     Record<string, number>
   >({});
 
-  // Phone number picker modal state
+  // Phone picker
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [selectedOwner, setSelectedOwner] = useState<null | {
     phones: string[];
   }>(null);
 
-  // Navigation modal state
+  // Navigation
   const [showNavigationModal, setShowNavigationModal] = useState(false);
   const [navigationDestination, setNavigationDestination] =
     useState<Coordinate | null>(null);
 
-  // Alert modal state
+  // Alert
   const [alertModal, setAlertModal] = useState<{
     visible: boolean;
     title: string;
@@ -188,14 +278,20 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
       style?: 'default' | 'cancel' | 'destructive';
     }>;
     icon?: 'alert' | 'success' | 'error' | 'info';
-  }>({
-    visible: false,
-    title: '',
-    message: '',
-    buttons: [],
-  });
+  }>({ visible: false, title: '', message: '', buttons: [] });
 
-  // Centralized user location state for both filtering and navigation
+  // Details modal
+  const [detailsModal, setDetailsModal] = useState<{
+    visible: boolean;
+    kind: 'lost' | 'found';
+    date?: string;
+    address?: string;
+    coordinates?: [number, number];
+    notes?: string;
+    title?: string;
+  }>({ visible: false, kind: 'lost' });
+
+  // Filters: location
   const [userLocation, setUserLocation] = useState<Coordinate | null>(null);
   const [filterLocation, setFilterLocation] = useState<LocationData | null>(
     null,
@@ -203,14 +299,12 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
   const [locationMethod, setLocationMethod] = useState<'current' | 'manual'>(
     'current',
   );
-  const [searchRadius, setSearchRadius] = useState<number>(5); // Default 5km radius
+  const [searchRadius, setSearchRadius] = useState<number>(5);
   const [showRadiusSelector, setShowRadiusSelector] = useState(false);
 
-  // Location permissions hook
   const { getCurrentLocation, loading: currentLocationLoading } =
     useLocationPermission();
 
-  // Species list with "All" option
   const speciesList = useMemo(() => {
     const allOption = {
       label: t('all'),
@@ -220,12 +314,12 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
     return [allOption, ...getSpeciesList(t)];
   }, [t]);
 
-  // Load initial data
+  // initial load
   useEffect(() => {
     searchPets(true);
   }, [searchPets]);
 
-  // Handle search filters change
+  // filters change (keep same behavior)
   useEffect(() => {
     const filters = {
       searchQuery,
@@ -235,14 +329,8 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
         : undefined,
       radius: userLocation ? searchRadius : undefined,
     };
-
     setFilters(filters);
-
-    // Debounce search
-    const timeoutId = setTimeout(() => {
-      searchPets(true);
-    }, 500);
-
+    const timeoutId = setTimeout(() => searchPets(true), 500);
     return () => clearTimeout(timeoutId);
   }, [
     searchQuery,
@@ -253,46 +341,57 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
     searchPets,
   ]);
 
-  // FlatList ref for scroll control
   const flatListRef = useRef<FlatList>(null);
 
   const onRefresh = useCallback(() => {
-    // Scroll to top when refreshing for better UX
     flatListRef.current?.scrollToOffset({ animated: true, offset: 0 });
     refreshPets();
   }, [refreshPets]);
 
   const handleCall = useCallback((phones: string[]) => {
-    if (phones.length === 1) {
-      // If only one phone number, call directly
-      Linking.openURL(`tel:${phones[0]}`);
-    } else {
-      // If multiple phone numbers, show picker modal
-      setSelectedOwner({ phones });
+    const sanitized = (phones || []).map(p => `${p}`.trim()).filter(Boolean);
+    if (sanitized.length === 1) Linking.openURL(`tel:${sanitized[0]}`);
+    else {
+      setSelectedOwner({ phones: sanitized });
       setShowPhoneModal(true);
     }
   }, []);
 
   const handlePhoneSelect = useCallback((phoneNumber: string) => {
+    if (!phoneNumber) return;
     Linking.openURL(`tel:${phoneNumber}`);
   }, []);
 
-  // const handleEmail = useCallback((email: string) => {
-  //   Linking.openURL(`mailto:${email}`);
-  // }, []);
-
-  const handleViewDetails = useCallback((petId: string, petName: string) => {
-    console.log('View pet details:', petId, petName);
-    // Navigate to pet details screen
-    // navigation.navigate('PetDetails', { petId, petName });
+  const handleEmail = useCallback((email: string) => {
+    if (!email) return;
+    Linking.openURL(`mailto:${email}`);
   }, []);
 
-  // Updated handleNavigate function to use stored user location
-  const handleNavigate = useCallback(
-    (petId: string, petName: string) => {
-      console.log('Navigate to pet location:', petId, petName);
+  // Details modal (prefer found → lost → base, but keep original UX: only show for found/lost)
+  const handleViewDetails = useCallback(
+    (petId: string) => {
+      const pet = pets.find(p => p._id === petId);
+      if (!pet) return;
 
-      // Check if user has set a location in filters
+      const picked = pickBestLocation(pet);
+      if (!picked.kind || picked.kind === 'base') return; // regular pets: do nothing
+
+      setDetailsModal({
+        visible: true,
+        kind: picked.kind,
+        title: picked.kind === 'found' ? t('found_details') : t('lost_details'),
+        date: picked.date ?? undefined,
+        address: picked.address,
+        coordinates: picked.coords, // [lng, lat]
+        notes: picked.notes,
+      });
+    },
+    [pets, t],
+  );
+
+  // Navigation uses best available location (found → lost → base)
+  const handleNavigate = useCallback(
+    (petId: string) => {
       if (!userLocation) {
         setAlertModal({
           visible: true,
@@ -300,20 +399,13 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
           message: t('please_set_location_in_filters_for_navigation'),
           icon: 'info',
           buttons: [
-            {
-              text: t('cancel'),
-              style: 'cancel',
-            },
-            {
-              text: t('open_filters'),
-              onPress: () => setShowFilters(true),
-            },
+            { text: t('cancel'), style: 'cancel' },
+            { text: t('open_filters'), onPress: () => setShowFilters(true) },
           ],
         });
         return;
       }
 
-      // Find the pet to get its coordinates
       const pet = pets.find(p => p._id === petId);
       if (!pet) {
         setAlertModal({
@@ -321,52 +413,39 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
           title: t('error'),
           message: t('pet_location_not_found'),
           icon: 'error',
-          buttons: [
-            {
-              text: t('ok'),
-              style: 'default',
-            },
-          ],
+          buttons: [{ text: t('ok'), style: 'default' }],
         });
         return;
       }
 
-      if (!pet.location?.coordinates?.coordinates) {
+      const picked = pickBestLocation(pet);
+      if (!picked.coords) {
         setAlertModal({
           visible: true,
           title: t('error'),
           message: t('pet_location_not_available'),
           icon: 'error',
-          buttons: [
-            {
-              text: t('ok'),
-              style: 'default',
-            },
-          ],
+          buttons: [{ text: t('ok'), style: 'default' }],
         });
         return;
       }
 
-      const destination: Coordinate = {
-        latitude: pet.location.coordinates.coordinates[1], // GeoJSON format: [lng, lat]
-        longitude: pet.location.coordinates.coordinates[0],
-      };
-
-      setNavigationDestination(destination);
+      const [lng, lat] = picked.coords;
+      setNavigationDestination({
+        latitude: Number(lat),
+        longitude: Number(lng),
+      });
       setShowNavigationModal(true);
     },
     [userLocation, pets, t],
   );
 
-  // Close navigation modal
   const handleCloseNavigation = useCallback(() => {
     setShowNavigationModal(false);
     setNavigationDestination(null);
   }, []);
 
-  // Location filtering functions that also set user location for navigation
   const handleFetchCurrentLocation = useCallback(async () => {
-    console.log('🔍 Fetching current location for filtering and navigation...');
     const coords = await getCurrentLocation();
     if (coords) {
       const currentLocation: LocationData = {
@@ -375,34 +454,21 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
         lat: coords.latitude.toString(),
         lon: coords.longitude.toString(),
       };
-
-      // Set both filter location and user location for navigation
       setFilterLocation(currentLocation);
       setUserLocation({
         latitude: coords.latitude,
         longitude: coords.longitude,
       });
-
-      console.log(
-        '📍 Current location set for filtering and navigation:',
-        currentLocation,
-      );
       setShowRadiusSelector(true);
     }
   }, [getCurrentLocation, t]);
 
   const handleManualLocationSelect = useCallback((location: LocationData) => {
-    // Set both filter location and user location for navigation
     setFilterLocation(location);
     setUserLocation({
       latitude: parseFloat(location.lat),
       longitude: parseFloat(location.lon),
     });
-
-    console.log(
-      '📍 Manual location set for filtering and navigation:',
-      location,
-    );
     setShowRadiusSelector(true);
   }, []);
 
@@ -410,17 +476,16 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
     (method: 'current' | 'manual') => {
       setLocationMethod(method);
       setFilterLocation(null);
-      setUserLocation(null); // Clear user location when method changes
+      setUserLocation(null);
       setShowRadiusSelector(false);
-      console.log('📍 Location method changed to:', method);
     },
     [],
   );
 
-  const handleRadiusChange = useCallback((radius: number) => {
-    setSearchRadius(radius);
-    console.log('📏 Search radius changed to:', radius, 'km');
-  }, []);
+  const handleRadiusChange = useCallback(
+    (radius: number) => setSearchRadius(radius),
+    [],
+  );
 
   const renderSpeciesItem = useCallback(
     (item: any) => (
@@ -436,63 +501,97 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
     [styles],
   );
 
-  // Image slider handlers
+  // image slider handlers (unchanged)
   const handleImageScroll = useCallback(
     (event: any, petId: string, imageCount: number) => {
       const scrollX = event.nativeEvent.contentOffset.x;
       const imageWidth = scale(350);
       const currentIndex = Math.round(scrollX / imageWidth);
       const clampedIndex = Math.max(0, Math.min(currentIndex, imageCount - 1));
-
-      setCurrentImageIndices(prev => ({
-        ...prev,
-        [petId]: clampedIndex,
-      }));
+      setCurrentImageIndices(prev => ({ ...prev, [petId]: clampedIndex }));
     },
     [],
   );
 
   const handleImageIndexChange = useCallback((petId: string, index: number) => {
-    setCurrentImageIndices(prev => ({
-      ...prev,
-      [petId]: index,
-    }));
+    setCurrentImageIndices(prev => ({ ...prev, [petId]: index }));
   }, []);
 
-  // Convert Pet to PetCard format
+  // keep SAME outward shape your PetCard expects (age/weight as formatted strings)
+  // keep SAME outward shape your PetCard expects (age/weight as formatted strings)
+  // location is ONLY sent when the pet is lost or found
   const convertPetForCard = useCallback(
     (pet: Pet) => {
+      const isLost = !!pet.isLost;
+      const isFound = !!pet.isFound;
+
+      // Base common fields
+      const vaccinated = pet.vaccinated === true;
+      const microchipped = pet.microchipped === true;
+
+      // Build location props ONLY for lost/found
+      let locProps: Partial<{
+        location: string;
+        latitude: number;
+        longitude: number;
+        distance: string | number;
+      }> = {};
+
+      if (isLost || isFound) {
+        const picked = pickBestLocation(pet); // already rejects [0,0] etc
+        if (picked.coords) {
+          locProps = {
+            location: picked.address || '',
+            latitude: Number(picked.coords[1]),
+            longitude: Number(picked.coords[0]),
+            distance: pet.distance || '-- km',
+          };
+        }
+      }
+
       return {
         id: pet._id,
-        name: pet.name,
-        species: pet.species,
+        name: pet.name || '',
+        species: pet.species || '',
         breed: pet.breed || '',
-        age: formatAge(pet.age || 0), // Convert to formatted string for PetCard
+        age: formatAge(pet.age ?? 0),
         furColor: pet.furColor || '',
         eyeColor: pet.eyeColor || '',
-        weight: formatWeight(pet.weight || { value: 0, unit: 'kg' }), // Convert to formatted string
-        phones: pet.phoneNumbers,
-        location: pet.location?.address || '',
-        latitude: pet.location?.coordinates?.coordinates?.[1] || 0, // GeoJSON: [lng, lat]
-        longitude: pet.location?.coordinates?.coordinates?.[0] || 0,
-        distance: pet.distance || '-- km',
+        weight: formatWeight(pet.weight || { value: 0, unit: 'kg' }),
+
+        // contact
+        phones: Array.isArray(pet.phoneNumbers) ? pet.phoneNumbers : [],
+        email: pet.email || '',
+
+        // ✅ location props only when lost/found
+        ...locProps,
+
         registrationDate: pet.registrationDate,
-        images: pet.images || [],
+        images: Array.isArray(pet.images) ? pet.images : [],
         description: pet.description || '',
-        isLost: pet.isLost,
-        isFound: pet.isFound,
-        vaccinated: pet.vaccinated || false,
-        microchipped: pet.microchipped || false,
+
+        // status flags
+        isLost,
+        isFound,
+
+        // health flags + synonyms
+        vaccinated,
+        isVaccinated: vaccinated,
+        microchipped,
+        isChipped: microchipped,
+        hasChip: microchipped,
+
+        // originals for modals
+        lostDetails: pet.lostDetails,
+        foundDetails: pet.foundDetails,
       };
     },
     [formatAge, formatWeight],
   );
 
-  // Enhanced pet card render with proper formatting
   const renderPetItem = useCallback(
     ({ item }: { item: Pet }) => {
       const petForCard = convertPetForCard(item);
-
       return (
         <PetCard
           pet={petForCard}
@@ -500,8 +599,9 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
           onImageIndexChange={handleImageIndexChange}
           onImageScroll={handleImageScroll}
           onCall={handleCall}
-          onViewDetails={handleViewDetails}
-          onNavigate={handleNavigate}
+          onEmail={handleEmail}
+          onViewDetails={_id => handleViewDetails(_id)}
+          onNavigate={_id => handleNavigate(_id)}
         />
       );
     },
@@ -511,6 +611,7 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
       handleImageIndexChange,
       handleImageScroll,
       handleCall,
+      handleEmail,
       handleViewDetails,
       handleNavigate,
     ],
@@ -518,31 +619,27 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
 
   const renderFooter = useCallback(() => {
     if (!loadingMore) return null;
-
     return (
       <View style={styles.loadingFooter}>
         <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={styles.loadingText}>{t('loading_more')}...</Text>
       </View>
     );
-  }, [loadingMore, colors.primary, t, styles]);
+  }, [loadingMore, colors.primary, styles]);
 
   const handleLoadMore = useCallback(() => {
-    if (hasMore && !loading && !loadingMore) {
-      loadMorePets();
-    }
-  }, [hasMore, loading, loadingMore, loadMorePets]);
+    if (pets.length === 0) return;
+    if (hasMore && !loading && !loadingMore) loadMorePets();
+  }, [pets.length, hasMore, loading, loadingMore, loadMorePets]);
 
   const renderListHeader = useCallback(
     () => (
       <Text style={styles.resultsCount}>
-        {t('found_pets_count', {
-          count: pets.length,
-        })}
+        {t('found_pets_count', { count: pets.length })}
       </Text>
     ),
     [pets.length, styles.resultsCount, t],
   );
+
   const renderEmptyState = useCallback(
     () => (
       <View style={styles.emptyContainer}>
@@ -557,7 +654,7 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
 
   return (
     <View style={styles.container}>
-      {/* Header with Back Navigation and Filter */}
+      {/* Header */}
       <View style={styles.header}>
         <IconButton
           icon={renderFilterIcon(colors.primary)}
@@ -567,14 +664,13 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
         />
       </View>
 
-      {/* Search Section */}
+      {/* Search + Filters */}
       <View
         style={[
           styles.searchSection,
           showFilters && styles.expandedSearchSection,
         ]}
       >
-        {/* Search Input */}
         <CustomInputText
           placeholder={t('search_pets_owners')}
           value={searchQuery}
@@ -590,7 +686,6 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
             style={styles.filtersScroll}
             contentContainerStyle={styles.filtersContent}
           >
-            {/* Species Dropdown */}
             <IconDropdown
               label={t('species')}
               icon={SpeciesIcon}
@@ -603,13 +698,12 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
               renderItem={renderSpeciesItem}
             />
 
-            {/* Location Setting for Navigation and Filtering */}
+            {/* Location filter + nav readiness */}
             <View style={styles.locationSection}>
               <Text style={styles.filterSectionTitle}>
                 {t('set_your_location')}
               </Text>
 
-              {/* Location Status Display */}
               {userLocation ? (
                 <View style={styles.locationStatusCard}>
                   <LocationIcon color={colors.success || colors.primary} />
@@ -634,7 +728,6 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
                 </View>
               )}
 
-              {/* Location Method Buttons */}
               <View style={styles.locationMethodContainer}>
                 <TouchableOpacity
                   style={[
@@ -675,7 +768,6 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
                 </TouchableOpacity>
               </View>
 
-              {/* Current Location Button */}
               {locationMethod === 'current' && (
                 <TouchableOpacity
                   style={[
@@ -698,7 +790,6 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
                 </TouchableOpacity>
               )}
 
-              {/* Manual Location Picker */}
               {locationMethod === 'manual' && (
                 <StyledLocationPicker
                   onSelect={handleManualLocationSelect}
@@ -706,7 +797,6 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
                 />
               )}
 
-              {/* Radius Selector */}
               {showRadiusSelector && (
                 <View style={styles.radiusContainer}>
                   <Text style={styles.radiusTitle}>{t('search_radius')}</Text>
@@ -772,8 +862,8 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
       {/* Results */}
       {loading && pets.length === 0 ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>{t('searching_pets')}...</Text>
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
         <FlatList
@@ -790,7 +880,7 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
-          onEndReached={handleLoadMore}
+          onEndReached={pets.length > 0 ? handleLoadMore : undefined}
           onEndReachedThreshold={0.3}
           ListHeaderComponent={pets.length > 0 ? renderListHeader : null}
           ListEmptyComponent={renderEmptyState}
@@ -798,37 +888,34 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
         />
       )}
 
-      {/* Error Display */}
+      {/* Error */}
       {error && (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
       )}
 
-      {/* Phone Number Picker Modal */}
+      {/* Phone Picker */}
       <PhoneNumberPickerModal
         visible={showPhoneModal}
         onClose={() => setShowPhoneModal(false)}
         phoneNumbers={selectedOwner?.phones || []}
-        businessName={selectedOwner?.name || ''}
+        businessName={''}
         onSelectPhone={handlePhoneSelect}
       />
 
-      {/* Route Map Modal for Navigation */}
+      {/* Route Map Modal */}
       {userLocation && navigationDestination && (
         <RouteMapModal
           visible={showNavigationModal}
           onClose={handleCloseNavigation}
           origin={userLocation}
           destination={navigationDestination}
-          polylineOptions={{
-            strokeColor: colors.primary,
-            strokeWidth: 4,
-          }}
+          polylineOptions={{ strokeColor: colors.primary, strokeWidth: 4 }}
         />
       )}
 
-      {/* Alert Modal */}
+      {/* Alert */}
       <AlertModal
         visible={alertModal.visible}
         onClose={() => setAlertModal(prev => ({ ...prev, visible: false }))}
@@ -836,6 +923,17 @@ const SearchPetsScreen: React.FC<SearchPetsScreenProps> = memo(() => {
         message={alertModal.message}
         buttons={alertModal.buttons}
         icon={alertModal.icon}
+      />
+
+      {/* Pet Details Modal */}
+      <PetDetailsModal
+        visible={detailsModal.visible}
+        onClose={() => setDetailsModal(prev => ({ ...prev, visible: false }))}
+        kind={detailsModal.kind}
+        date={detailsModal.date}
+        address={detailsModal.address}
+        coordinates={detailsModal.coordinates}
+        notes={detailsModal.notes}
       />
     </View>
   );
@@ -856,22 +954,14 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       paddingBottom: verticalScale(16),
       backgroundColor: colors.surface,
     },
-    filterButton: {
-      margin: 0,
-    },
-    filtersScroll: {
-      maxHeight: verticalScale(400),
-    },
-    filtersContent: {
-      paddingBottom: verticalScale(16),
-    },
+    filterButton: { margin: 0 },
+    filtersScroll: { maxHeight: verticalScale(400) },
+    filtersContent: { paddingBottom: verticalScale(16) },
     searchSection: {
       backgroundColor: colors.surface,
       paddingBottom: verticalScale(16),
     },
-    expandedSearchSection: {
-      paddingBottom: verticalScale(20),
-    },
+    expandedSearchSection: { paddingBottom: verticalScale(20) },
     searchInputContainer: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -903,20 +993,10 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       height: moderateScale(20),
       marginRight: scale(12),
     },
-    dropdownItemText: {
-      fontSize: moderateScale(16),
-      color: colors.onSurface,
-    },
-    scrollView: {
-      flex: 1,
-    },
-    scrollViewContent: {
-      paddingBottom: verticalScale(20),
-    },
-    scrollViewContentEmpty: {
-      flexGrow: 1,
-      justifyContent: 'center',
-    },
+    dropdownItemText: { fontSize: moderateScale(16), color: colors.onSurface },
+    scrollView: { flex: 1 },
+    scrollViewContent: { paddingBottom: verticalScale(20) },
+    scrollViewContentEmpty: { flexGrow: 1, justifyContent: 'center' },
     resultsCount: {
       fontSize: moderateScale(16),
       fontWeight: '500',
@@ -933,6 +1013,7 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       fontSize: moderateScale(16),
       color: colors.onSurfaceVariant,
       marginTop: verticalScale(12),
+      marginBottom: verticalScale(6),
     },
     loadingFooter: {
       flexDirection: 'row',
@@ -970,8 +1051,6 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       fontSize: moderateScale(14),
       textAlign: 'center',
     },
-
-    // Location Setting Styles
     locationSection: {
       marginTop: verticalScale(16),
       padding: scale(16),
@@ -1046,9 +1125,7 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       paddingVertical: verticalScale(12),
       paddingHorizontal: scale(16),
     },
-    locationButtonDisabled: {
-      opacity: 0.6,
-    },
+    locationButtonDisabled: { opacity: 0.6 },
     locationButtonContent: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1076,7 +1153,5 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
     },
   });
 
-// Set display name for debugging
 SearchPetsScreen.displayName = 'SearchPetsScreen';
-
 export default SearchPetsScreen;

@@ -1,46 +1,48 @@
 // viewModels/MyBusinessViewModel.ts
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Business, BusinessListResponse } from '../types/business';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Business } from '../types/business';
 import BusinessApiService from '../api/services/BusinessApiService';
 import { apiClient } from '../api';
 
 /**
- * ViewModel for managing the user's business list
- * Works with the Business types for "My Businesses" screen
+ * ViewModel for managing the user's business list.
+ * - Fetches ONCE on mount (StrictMode-safe).
+ * - Pull-to-refresh still works.
+ * - "Load more" is a no-op because getMyBusinesses returns all.
  */
 export function useMyBusinessViewModel() {
-  // Memoize the service to prevent unnecessary re-creation
+  // Service is stable
   const businessService = useMemo(() => new BusinessApiService(apiClient), []);
 
-  // State - using Business[] since this is for "My Businesses" screen
+  // State
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Keep a simple pagination shape for API compatibility, but we don't actually paginate
   const [pagination, setPagination] = useState({
     offset: 0,
     limit: 20,
-    hasMore: true,
+    hasMore: false, // single-shot fetch → no more pages
   });
 
+  // StrictMode-safe guard to ensure single initial fetch
+  const didInitRef = useRef(false);
+
   /**
-   * Load businesses for the first time or refresh
+   * Core fetcher. Stable identity (depends only on service).
    */
   const loadBusinesses = useCallback(
     async (isRefresh = false) => {
+      // Treat all loads the same since this is a single-shot list
       if (isRefresh) {
-        setLoading(true);
-        setPagination(prev => ({ ...prev, offset: 0, hasMore: true }));
-      } else if (!isRefresh && pagination.offset === 0) {
-        setLoading(true);
-      } else {
-        setLoadingMore(true);
+        setError(null);
       }
-
-      setError(null);
+      setLoading(true);
+      setLoadingMore(false);
 
       try {
-        // Call your API service to get my businesses
         const response = await businessService.getMyBusinesses();
 
         if (!response.success || !response.data) {
@@ -48,20 +50,14 @@ export function useMyBusinessViewModel() {
         }
 
         const newBusinesses = response.data;
+        setBusinesses(newBusinesses);
 
-        if (isRefresh || pagination.offset === 0) {
-          setBusinesses(newBusinesses);
-        } else {
-          setBusinesses(prev => [...prev, ...newBusinesses]);
-        }
-
-        // For getMyBusinesses, we don't have pagination info from the API
-        // So we'll assume no more data if we get less than the limit
-        setPagination({
-          offset: pagination.offset + newBusinesses.length,
-          limit: pagination.limit,
-          hasMore: newBusinesses.length >= pagination.limit,
-        });
+        // Since backend returns the full list, stop pagination
+        setPagination(prev => ({
+          ...prev,
+          offset: newBusinesses.length,
+          hasMore: false,
+        }));
       } catch (err: any) {
         console.error('Error loading businesses:', err);
         setError(err.message || 'Failed to load businesses');
@@ -70,27 +66,26 @@ export function useMyBusinessViewModel() {
         setLoadingMore(false);
       }
     },
-    [pagination.offset, pagination.limit, businessService],
+    [businessService],
   );
 
   /**
-   * Load more businesses (pagination) - not used for getMyBusinesses but kept for consistency
+   * No-op: backend already returns all items.
    */
   const loadMore = useCallback(() => {
-    if (!loadingMore && !loading && pagination.hasMore) {
-      loadBusinesses(false);
-    }
-  }, [loadBusinesses, loadingMore, loading, pagination.hasMore]);
+    // Intentionally empty – no further pages to load.
+    // Keep the function to avoid changing the screen code.
+  }, []);
 
   /**
-   * Refresh the businesses list
+   * Pull-to-refresh still works.
    */
   const refresh = useCallback(() => {
     loadBusinesses(true);
   }, [loadBusinesses]);
 
   /**
-   * Delete a business
+   * Delete a business and update local state.
    */
   const deleteBusiness = useCallback(
     async (businessId: string) => {
@@ -104,40 +99,35 @@ export function useMyBusinessViewModel() {
           throw new Error(response.error || 'Failed to delete business');
         }
 
-        // Remove the business from local state
-        setBusinesses(prev =>
-          prev.filter(business => business._id !== businessId),
-        );
-
-        // If we removed the last business on current page, try loading more
-        if (businesses.length <= 1 && pagination.hasMore) {
-          await loadBusinesses(false);
-        }
+        setBusinesses(prev => prev.filter(b => b._id !== businessId));
+        // No pagination: nothing else to fetch here.
       } catch (err: any) {
         console.error('Error deleting business:', err);
         setError(err.message || 'Failed to delete business');
-        throw err; // Re-throw so the component can handle it
+        throw err; // surface to UI for Alert
       } finally {
         setLoading(false);
       }
     },
-    [businessService, businesses.length, pagination.hasMore, loadBusinesses],
+    [businessService],
   );
 
   /**
-   * Initialize - load businesses on mount
+   * One-time init (StrictMode-safe).
    */
   useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true; // lock
     loadBusinesses(true);
-  }, [loadBusinesses]); // Only run once on mount
+  }, [loadBusinesses]);
 
   return {
     businesses,
     loading,
     loadingMore,
     error,
-    loadMore,
-    refresh,
+    loadMore, // remains for API parity with the screen
+    refresh, // pull-to-refresh
     deleteBusiness,
   };
 }

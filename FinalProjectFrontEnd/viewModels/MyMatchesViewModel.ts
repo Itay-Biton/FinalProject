@@ -5,7 +5,7 @@ import { apiClient } from '../api';
 
 type PaginationState = { offset: number; limit: number; hasMore: boolean };
 
-export function useMyPetsViewModel() {
+export function useMyMatchesViewModel() {
   const petService = useMemo(() => new PetApiService(apiClient), []);
 
   const [pets, setPets] = useState<MyPetEntry[]>([]);
@@ -54,7 +54,7 @@ export function useMyPetsViewModel() {
         const { limit } = paginationRef.current;
         const offset = refresh ? 0 : paginationRef.current.offset;
 
-        const response = await petService.getMyPets({ limit, offset });
+        const response = await petService.getMyMatches();
         if (!response.success || !response.data) {
           throw new Error(response.error || 'Failed to load pets');
         }
@@ -94,7 +94,9 @@ export function useMyPetsViewModel() {
     loadPets();
   }, [loadPets, loading, loadingMore]);
 
-  const refresh = useCallback(() => loadPets({ refresh: true }), [loadPets]);
+  const refresh = useCallback(() => {
+    loadPets({ refresh: true });
+  }, [loadPets]);
 
   const deletePet = useCallback(
     async (petId: string) => {

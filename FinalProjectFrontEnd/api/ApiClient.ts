@@ -17,21 +17,50 @@ export interface ApiClientConfig {
   defaultHeaders?: Record<string, string>;
 }
 
+function resolveBaseURL(override?: string) {
+  if (override) return override;
+
+  // Prefer platform-specific env vars; fall back to generic API_URL; then dev defaults.
+  const iosUrl =
+    Config.API_IOS_URL ||
+    Config.API_URL ||
+    (__DEV__ ? 'http://127.0.0.1:3000' : undefined);
+
+  const androidUrl =
+    Config.API_ANDROID_URL ||
+    Config.API_URL ||
+    (__DEV__ ? 'http://10.0.2.2:3000' : undefined);
+
+  const chosen = Platform.OS === 'ios' ? iosUrl : androidUrl;
+
+  if (!chosen) {
+    console.warn(
+      'ApiClient: No base URL configured. Set API_IOS_URL / API_ANDROID_URL (or API_URL).',
+    );
+  }
+  return chosen || 'http://127.0.0.1:3000'; // last-resort dev fallback
+}
+
 class ApiClient {
   private baseURL: string;
   private timeout: number;
   private defaultHeaders: Record<string, string>;
 
   constructor(config: ApiClientConfig = {}) {
-    this.baseURL = config.baseURL || Config.API_URL || 'http://10.0.2.2:3000';
+    this.baseURL = resolveBaseURL(config.baseURL);
     this.timeout = config.timeout || 10000;
     this.defaultHeaders = config.defaultHeaders || {};
 
     console.log('🚀 ApiClient initialized with:', {
       baseURL: this.baseURL,
+      platform: Platform.OS,
       timeout: this.timeout,
       defaultHeaders: this.defaultHeaders,
-      configAPI: Config.API_URL,
+      env: {
+        API_IOS_URL: Config.API_IOS_URL,
+        API_ANDROID_URL: Config.API_ANDROID_URL,
+        API_URL: Config.API_URL,
+      },
     });
   }
 
@@ -54,7 +83,6 @@ class ApiClient {
     const url = `${this.baseURL}${endpoint}`;
     console.log(`📡 ${options.method || 'GET'} → ${url}`);
 
-    // Build headers
     const token = await this.getAuthToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -63,7 +91,6 @@ class ApiClient {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
-    // Setup timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
@@ -91,7 +118,6 @@ class ApiClient {
 
     console.log(`📨 ${response.status} ${response.statusText}`, responseData);
 
-    // Handle 401: attempt token refresh + retry once
     if (response.status === 401 && retry) {
       console.log('🔄 401 Unauthorized: refreshing token...');
       const newToken = await authService.getIdToken(true);
@@ -109,8 +135,8 @@ class ApiClient {
       return {
         success: false,
         error:
-          responseData?.message ||
-          responseData?.error ||
+          (responseData as any)?.message ||
+          (responseData as any)?.error ||
           `HTTP ${response.status}`,
       };
     }
@@ -151,14 +177,11 @@ class ApiClient {
   async uploadImage<T>(
     endpoint: string,
     formData: FormData,
-    options?: RequestInit,
+    options?: RequestInit & { timeoutMs?: number },
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseURL}${endpoint}`;
-
-    // 1. Retrieve auth token
     const token = await this.getAuthToken();
 
-    // 2. Build headers (omit Content-Type so fetch generates the boundary)
     const headers: Record<string, string> = {
       ...this.defaultHeaders,
       ...((options?.headers as Record<string, string>) || {}),
@@ -166,36 +189,43 @@ class ApiClient {
     };
     delete headers['Content-Type'];
 
-    // 3. Setup AbortController for timeout
+    const timeoutMs =
+      (options as any)?.timeoutMs ?? Math.max(60000, this.timeout);
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    let response: Response;
     try {
-      response = await fetch(url, {
+      let response = await fetch(url, {
         ...options,
         method: 'POST',
         headers,
         body: formData,
         signal: controller.signal,
       });
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      console.error('🚨 Image upload error', err);
-      return { success: false, error: err.message || 'Image upload failed' };
-    } finally {
-      clearTimeout(timeoutId);
-    }
 
-    // 4. Parse response
-    const contentType = response.headers.get('content-type') || '';
-    const responseData = contentType.includes('application/json')
-      ? await response.json()
-      : await response.text();
+      if (response.status === 401) {
+        const newToken = await authService.getIdToken(true);
+        if (newToken) {
+          await AsyncStorage.setItem('firebase_id_token', newToken);
+          const retryHeaders = {
+            ...headers,
+            Authorization: `Bearer ${newToken}`,
+          };
+          response = await fetch(url, {
+            ...options,
+            method: 'POST',
+            headers: retryHeaders,
+            body: formData,
+          });
+        }
+      }
 
-    if (response.ok) {
-      return { success: true, data: responseData as T };
-    } else {
+      const contentType = response.headers.get('content-type') || '';
+      const responseData = contentType.includes('application/json')
+        ? await response.json()
+        : await response.text();
+
+      if (response.ok) return { success: true, data: responseData as T };
       return {
         success: false,
         error:
@@ -203,6 +233,19 @@ class ApiClient {
           (responseData as any)?.error ||
           `HTTP ${response.status}`,
       };
+    } catch (err: any) {
+      const looksLikeAbort =
+        err?.name === 'AbortError' ||
+        /network request failed/i.test(err?.message || '');
+      console.error('🚨 Image upload error', err);
+      return {
+        success: false,
+        error: looksLikeAbort
+          ? 'Upload timed out or was blocked'
+          : err?.message || 'Image upload failed',
+      };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

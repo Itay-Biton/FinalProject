@@ -240,7 +240,7 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       fontWeight: '400',
     },
     destructiveButtonText: {
-      color: colors.error,
+      color: colors.onPrimary,
       fontWeight: '600',
     },
   });

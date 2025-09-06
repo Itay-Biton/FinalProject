@@ -123,6 +123,7 @@
     android:roundIcon="@mipmap/ic_my_pet_round"
     android:allowBackup="false"
     android:theme="@style/AppTheme"
+    android:usesCleartextTraffic="true"
     android:networkSecurityConfig="@xml/network_security_config"
     android:supportsRtl="true">
     <meta-data

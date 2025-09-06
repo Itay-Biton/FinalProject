@@ -1,24 +1,25 @@
 // components/Modals/ReviewsModal.tsx
-import React, { memo, useMemo, useState, useCallback, useEffect } from 'react';
+import React, { memo, useMemo, useCallback, useRef, useState } from 'react';
 import {
   Modal,
   View,
   Text,
-  Pressable,
+  TouchableOpacity,
   StyleSheet,
   useWindowDimensions,
-  TouchableOpacity,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   FlatList,
-  I18nManager,
+  TextInput,
+  SafeAreaView,
 } from 'react-native';
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import { useTheme } from 'react-native-paper';
 import { useTranslation } from 'react-i18next';
 import { ThemeColors } from '../../types/theme';
 import { Review } from '../../types/business';
+import { useReviewsModalViewModel } from '../../viewModels/useReviewsModalViewModel';
 
 // Icons
 import StarIconSvg from '../../assets/icons/ic_star.svg';
@@ -28,7 +29,7 @@ import UserIconSvg from '../../assets/icons/ic_user.svg';
 const StarIcon = ({
   color,
   filled = false,
-  size = 16,
+  size = 18,
 }: {
   color?: string;
   filled?: boolean;
@@ -42,7 +43,6 @@ const StarIcon = ({
     strokeWidth={filled ? 0 : 2}
   />
 );
-
 const CloseIcon = ({ color }: { color?: string }) => (
   <CloseIconSvg
     width={moderateScale(24)}
@@ -50,7 +50,6 @@ const CloseIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
-
 const UserIcon = ({ color }: { color?: string }) => (
   <UserIconSvg
     width={moderateScale(20)}
@@ -59,30 +58,67 @@ const UserIcon = ({ color }: { color?: string }) => (
   />
 );
 
+// Half-star renderer for display rows
+const StarsDisplay = ({ rating }: { rating: number }) => {
+  const size = 14;
+  const color = '#FFD700';
+  const rounded = Math.max(0, Math.min(5, Math.round(rating * 2) / 2));
+  const full = Math.floor(rounded);
+  const half = rounded - full >= 0.5 ? 1 : 0;
+  const empty = 5 - full - half;
+
+  return (
+    <View style={{ flexDirection: 'row' }}>
+      {Array.from({ length: full }).map((_, i) => (
+        <StarIcon key={`f-${i}`} size={size} color={color} filled />
+      ))}
+      {half === 1 ? (
+        <StarIcon key="half" size={size} color={color} filled />
+      ) : null}
+      {Array.from({ length: empty }).map((_, i) => (
+        <StarIcon key={`e-${i}`} size={size} color={color} filled={false} />
+      ))}
+    </View>
+  );
+};
+
+// Interactive star picker for composer
+const StarsPicker = ({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) => {
+  const color = '#FFD700';
+  return (
+    <View style={{ flexDirection: 'row' }}>
+      {Array.from({ length: 5 }).map((_, i) => {
+        const idx = i + 1;
+        return (
+          <TouchableOpacity
+            key={idx}
+            onPress={() => onChange(idx)}
+            activeOpacity={0.7}
+            style={{ marginRight: 4 }}
+          >
+            <StarIcon size={20} color={color} filled={value >= idx} />
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+};
+
 interface ReviewsModalProps {
   visible: boolean;
   onClose: () => void;
   businessId: string;
   businessName: string;
-  onFetchReviews: (
-    businessId: string,
-    params?: { limit?: number; offset?: number },
-  ) => Promise<{
-    success: boolean;
-    data?: any[];
-    error?: string;
-    pagination?: {
-      total: number;
-      hasMore: boolean;
-      limit: number;
-      offset: number;
-    };
-  }>;
 }
 
 const ReviewsModal: React.FC<ReviewsModalProps> = memo(
-  ({ visible, onClose, businessId, businessName, onFetchReviews }) => {
-    // Hooks must be called unconditionally
+  ({ visible, onClose, businessId, businessName }) => {
     const { width, height } = useWindowDimensions();
     const { colors }: { colors: ThemeColors } = useTheme();
     const { t } = useTranslation();
@@ -91,128 +127,36 @@ const ReviewsModal: React.FC<ReviewsModalProps> = memo(
       [width, height, colors],
     );
 
-    const [reviews, setReviews] = useState<any[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [loadingMore, setLoadingMore] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [hasMore, setHasMore] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
+    const vm = useReviewsModalViewModel(businessId);
+    const listRef = useRef<FlatList<Review>>(null);
 
-    const loadReviews = useCallback(
-      async (reset = false) => {
-        if (reset) {
-          setLoading(true);
-          setError(null);
-        } else {
-          if (!hasMore || loadingMore) return;
-          setLoadingMore(true);
-        }
+    const [draftText, setDraftText] = useState('');
+    const [draftRating, setDraftRating] = useState(0);
 
-        try {
-          const params = {
-            limit: 10,
-            offset: reset ? 0 : reviews.length,
-          };
-          const response = await onFetchReviews(businessId, params);
+    const close = useCallback(() => {
+      if (!vm.loading && !vm.posting) onClose();
+    }, [vm.loading, vm.posting, onClose]);
 
-          if (response.success && response.data) {
-            const newReviews = reset
-              ? response.data
-              : [...reviews, ...response.data];
-            setReviews(newReviews);
-            setHasMore(response.pagination?.hasMore || false);
-          } else {
-            setError(response.error || t('failed_to_load_reviews'));
-          }
-        } catch (err: any) {
-          setError(err.message || t('failed_to_load_reviews'));
-        } finally {
-          setLoading(false);
-          setLoadingMore(false);
-          setRefreshing(false);
-        }
-      },
-      [businessId, hasMore, loadingMore, onFetchReviews, reviews, t],
-    );
-
-    useEffect(() => {
-      if (visible && businessId) {
-        setReviews([]);
-        setError(null);
-        setHasMore(true);
-        loadReviews(true);
-      }
-    }, [visible, businessId]);
-
-    const handleRefresh = useCallback(() => {
-      setRefreshing(true);
-      loadReviews(true);
-    }, [loadReviews]);
-
-    const handleLoadMore = useCallback(() => {
-      if (hasMore && !loading && !loadingMore) {
-        loadReviews(false);
-      }
-    }, [hasMore, loading, loadingMore, loadReviews]);
-
-    const handleClose = useCallback(() => {
-      if (!loading) {
-        onClose();
-      }
-    }, [loading, onClose]);
-
-    const renderStars = useCallback((rating: number) => {
-      const stars = [];
-      const fullStars = Math.floor(rating);
-      const hasHalfStar = rating % 1 !== 0;
-      for (let i = 0; i < fullStars; i++) {
-        stars.push(
-          <StarIcon key={`full-${i}`} color="#FFD700" filled size={14} />,
+    const submit = useCallback(async () => {
+      if (!draftRating) return;
+      const res = await vm.submitReview(
+        draftRating,
+        draftText.trim() || undefined,
+      );
+      if (res.success) {
+        setDraftText('');
+        setDraftRating(0);
+        // scroll to top to show the new review
+        setTimeout(
+          () =>
+            listRef.current?.scrollToOffset?.({ animated: true, offset: 0 }),
+          50,
         );
       }
-      if (hasHalfStar) {
-        stars.push(<StarIcon key="half" color="#FFD700" filled size={14} />);
-      }
-      const emptyStars = 5 - Math.ceil(rating);
-      for (let i = 0; i < emptyStars; i++) {
-        stars.push(
-          <StarIcon
-            key={`empty-${i}`}
-            color="#FFD700"
-            filled={false}
-            size={14}
-          />,
-        );
-      }
-      return stars;
-    }, []);
+    }, [vm, draftRating, draftText]);
 
-    const formatDate = useCallback(
-      (dateString: string) => {
-        const date = new Date(dateString);
-        const now = new Date();
-        const diffTime = Math.abs(now.getTime() - date.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-        if (diffDays === 1) {
-          return t('yesterday');
-        } else if (diffDays < 7) {
-          return t('days_ago', { count: diffDays });
-        } else if (diffDays < 30) {
-          const weeks = Math.floor(diffDays / 7);
-          return t('weeks_ago', { count: weeks });
-        } else if (diffDays < 365) {
-          const months = Math.floor(diffDays / 30);
-          return t('months_ago', { count: months });
-        } else {
-          return date.toLocaleDateString();
-        }
-      },
-      [t],
-    );
-
-    const renderReviewItem = useCallback(
-      ({ item }: { item: any }) => (
+    const renderItem = useCallback(
+      ({ item }: { item: Review }) => (
         <View style={styles.reviewItem}>
           <View style={styles.reviewHeader}>
             <View style={styles.userInfo}>
@@ -221,156 +165,148 @@ const ReviewsModal: React.FC<ReviewsModalProps> = memo(
               </View>
               <View style={styles.userDetails}>
                 <Text style={styles.userName} numberOfLines={1}>
-                  {item.user?.name || t('anonymous_user')}
+                  {`${item.userId?.firstName || ''} ${
+                    item.userId?.lastName || ''
+                  }`.trim() || t('anonymous_user')}
                 </Text>
                 <Text style={styles.reviewDate}>
-                  {formatDate(item.createdAt || new Date().toISOString())}
+                  {new Date(item.createdAt).toLocaleDateString()}
                 </Text>
               </View>
             </View>
             <View style={styles.ratingContainer}>
-              <View style={styles.starsRow}>{renderStars(item.rating)}</View>
-              <Text style={styles.ratingValue}>{Math.ceil(item.rating)}</Text>
+              <StarsDisplay rating={item.rating} />
+              <Text style={styles.ratingValue}>{item.rating.toFixed(1)}</Text>
             </View>
           </View>
-          {item.comment && (
+          {!!item.comment && (
             <View style={styles.commentContainer}>
               <Text style={styles.commentText}>{item.comment}</Text>
             </View>
           )}
         </View>
       ),
-      [colors.primary, formatDate, renderStars, styles, t],
+      [colors.primary, styles, t],
     );
-
-    const renderEmptyState = useCallback(
-      () => (
-        <View style={styles.emptyContainer}>
-          <StarIcon color={colors.onSurfaceVariant} size={48} />
-          <Text style={styles.emptyTitle}>{t('no_reviews_yet')}</Text>
-          <Text style={styles.emptySubtitle}>
-            {t('be_the_first_to_review')}
-          </Text>
-        </View>
-      ),
-      [colors.onSurfaceVariant, styles, t],
-    );
-
-    const renderFooter = useCallback(() => {
-      if (!loadingMore) return null;
-      return (
-        <View style={styles.loadingFooter}>
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={styles.loadingText}>{t('loading_more_reviews')}</Text>
-        </View>
-      );
-    }, [loadingMore, colors.primary, styles, t]);
-
-    const averageRating = useMemo(() => {
-      if (reviews.length === 0) return 0;
-      const total = reviews.reduce(
-        (sum, review) => sum + (review.rating || 0),
-        0,
-      );
-      return Math.round((total / reviews.length) * 10) / 10;
-    }, [reviews]);
-
-    // guard after Hooks
-    if (!businessId) {
-      console.log('ReviewsModal: businessId is empty, not rendering');
-      return null;
-    }
 
     return (
       <Modal
         visible={visible}
-        transparent
+        transparent={false}
         animationType="slide"
-        onRequestClose={handleClose}
+        presentationStyle="fullScreen"
+        onRequestClose={close}
       >
-        <KeyboardAvoidingView
-          style={styles.keyboardView}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <Pressable style={styles.overlay} onPress={handleClose}>
-            <Pressable style={styles.modalContainer} onPress={() => {}}>
-              {/* Close Button */}
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={handleClose}
-                disabled={loading}
-              >
-                <CloseIcon color={colors.onSurface} />
-              </TouchableOpacity>
+        <SafeAreaView style={styles.safe}>
+          {/* HEADER BAR */}
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              onPress={close}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <CloseIcon color={colors.onSurface} />
+            </TouchableOpacity>
 
-              {/* Header */}
-              <View style={styles.header}>
-                <StarIcon
-                  color={colors.buttonTextColor || '#FFD700'}
-                  filled
-                  size={32}
+            <View style={styles.topBarCenter}>
+              <Text style={styles.title}>{t('reviews')}</Text>
+              <Text style={styles.businessName} numberOfLines={1}>
+                {businessName}
+              </Text>
+            </View>
+
+            {/* Right summary */}
+            <View style={styles.summaryBox}>
+              <StarsDisplay rating={vm.averageRating} />
+              <Text style={styles.summaryText}>
+                {vm.averageRating.toFixed(1)} • {vm.totalCount}
+              </Text>
+            </View>
+          </View>
+
+          {/* LIST */}
+          <FlatList
+            ref={listRef}
+            style={styles.list}
+            contentContainerStyle={[
+              styles.listContent,
+              vm.reviews.length === 0 && styles.listContentEmpty,
+            ]}
+            data={vm.reviews}
+            keyExtractor={it => it._id}
+            renderItem={renderItem}
+            refreshing={vm.refreshing}
+            onRefresh={vm.refresh}
+            onEndReached={vm.loadMore}
+            onEndReachedThreshold={0.5}
+            ListEmptyComponent={
+              vm.loading ? (
+                <View style={styles.centerBox}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={styles.loadingText}>{t('loading_reviews')}</Text>
+                </View>
+              ) : (
+                <View style={styles.centerBox}>
+                  <StarIcon size={48} color={colors.onSurfaceVariant} />
+                  <Text style={styles.emptyTitle}>{t('no_reviews_yet')}</Text>
+                  <Text style={styles.emptySubtitle}>
+                    {t('be_the_first_to_review')}
+                  </Text>
+                </View>
+              )
+            }
+            ListFooterComponent={
+              vm.loadingMore ? (
+                <View style={styles.footerLoading}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.loadingText}>
+                    {t('loading_more_reviews')}
+                  </Text>
+                </View>
+              ) : null
+            }
+          />
+
+          {/* FOOTER COMPOSER */}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+          >
+            <View style={styles.composer}>
+              <View style={styles.ratingPickerRow}>
+                <Text style={styles.composerLabel}>{t('your_rating')}</Text>
+                <StarsPicker value={draftRating} onChange={setDraftRating} />
+              </View>
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={styles.input}
+                  placeholder={t('write_a_review')}
+                  placeholderTextColor={colors.onSurfaceVariant}
+                  multiline
+                  value={draftText}
+                  onChangeText={setDraftText}
+                  maxLength={600}
                 />
-                <Text style={styles.title}>{t('reviews')}</Text>
-                <Text style={styles.businessName} numberOfLines={2}>
-                  {businessName}
-                </Text>
-
-                {reviews.length > 0 && (
-                  <View style={styles.averageRatingContainer}>
-                    <View style={styles.averageStars}>
-                      {renderStars(averageRating)}
-                    </View>
-                    <Text style={styles.averageRatingText}>
-                      {Math.ceil(averageRating)} ({reviews.length}{' '}
-                      {t('reviews_count')})
-                    </Text>
-                  </View>
-                )}
+                <TouchableOpacity
+                  style={[
+                    styles.sendBtn,
+                    (!draftRating || vm.posting) && styles.sendBtnDisabled,
+                  ]}
+                  onPress={submit}
+                  disabled={!draftRating || vm.posting}
+                >
+                  {vm.posting ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.buttonTextColor}
+                    />
+                  ) : (
+                    <Text style={styles.sendBtnText}>{t('send')}</Text>
+                  )}
+                </TouchableOpacity>
               </View>
-
-              {/* Reviews List */}
-              <View style={styles.reviewsContainer}>
-                {loading && reviews.length === 0 ? (
-                  <View style={styles.initialLoadingContainer}>
-                    <ActivityIndicator size="large" color={colors.primary} />
-                    <Text style={styles.loadingText}>
-                      {t('loading_reviews')}
-                    </Text>
-                  </View>
-                ) : error ? (
-                  <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{error}</Text>
-                    <TouchableOpacity
-                      style={styles.retryButton}
-                      onPress={() => loadReviews(true)}
-                    >
-                      <Text style={styles.retryButtonText}>{t('retry')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <FlatList
-                    data={reviews}
-                    renderItem={renderReviewItem}
-                    keyExtractor={item =>
-                      item._id || item.id || Math.random().toString()
-                    }
-                    showsVerticalScrollIndicator={false}
-                    refreshing={refreshing}
-                    onRefresh={handleRefresh}
-                    onEndReached={handleLoadMore}
-                    onEndReachedThreshold={0.5}
-                    ListEmptyComponent={renderEmptyState}
-                    ListFooterComponent={renderFooter}
-                    contentContainerStyle={[
-                      styles.reviewsList,
-                      reviews.length === 0 && styles.reviewsListEmpty,
-                    ]}
-                  />
-                )}
-              </View>
-            </Pressable>
-          </Pressable>
-        </KeyboardAvoidingView>
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
     );
   },
@@ -378,94 +314,66 @@ const ReviewsModal: React.FC<ReviewsModalProps> = memo(
 
 const createStyles = (width: number, height: number, colors: ThemeColors) =>
   StyleSheet.create({
-    keyboardView: {
-      flex: 1,
-    },
-    overlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      justifyContent: 'center',
+    safe: { flex: 1, backgroundColor: colors.modalColor || colors.surface },
+
+    // Top bar
+    topBar: {
+      height: verticalScale(56),
+      paddingHorizontal: scale(16),
+      flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: scale(20),
+      justifyContent: 'space-between',
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.outline + '40',
     },
-    modalContainer: {
-      backgroundColor: colors.modalColor || colors.surface,
-      borderRadius: moderateScale(16),
-      padding: moderateScale(20),
-      maxWidth: width * 0.95,
-      width: '100%',
-      maxHeight: height * 0.85,
-      elevation: 10,
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 5,
-      },
-      shadowOpacity: 0.3,
-      shadowRadius: 10,
-    },
-    closeButton: {
-      position: 'absolute',
-      top: moderateScale(15),
-      right: I18nManager.isRTL ? undefined : moderateScale(15),
-      left: I18nManager.isRTL ? moderateScale(15) : undefined,
-      padding: moderateScale(5),
-      zIndex: 1,
-    },
-    header: {
-      alignItems: 'center',
-      marginBottom: verticalScale(20),
-      paddingTop: verticalScale(10),
-      paddingHorizontal: moderateScale(10),
-    },
+    topBarCenter: { alignItems: 'center', flex: 1 },
     title: {
-      fontSize: moderateScale(20),
-      color: colors.modalText || colors.onSurface,
-      textAlign: 'center',
-      marginTop: verticalScale(12),
-      marginBottom: verticalScale(8),
-      fontWeight: '600',
+      fontSize: moderateScale(18),
+      fontWeight: '700',
+      color: colors.onSurface,
     },
     businessName: {
-      fontSize: moderateScale(16),
-      color: colors.modalText || colors.onSurface,
-      textAlign: 'center',
-      opacity: 0.8,
-      maxWidth: '90%',
-      marginBottom: verticalScale(12),
+      fontSize: moderateScale(12),
+      color: colors.onSurfaceVariant,
+      marginTop: verticalScale(2),
     },
-    averageRatingContainer: {
-      alignItems: 'center',
-      padding: moderateScale(12),
-      backgroundColor: colors.background,
-      borderRadius: moderateScale(8),
-      borderWidth: 1,
-      borderColor: colors.outline + '30',
+    summaryBox: { alignItems: 'flex-end', minWidth: scale(60) },
+    summaryText: {
+      fontSize: moderateScale(12),
+      color: colors.onSurfaceVariant,
+      marginTop: verticalScale(2),
     },
-    averageStars: {
-      flexDirection: 'row',
-      marginBottom: verticalScale(4),
-    },
-    averageRatingText: {
-      fontSize: moderateScale(14),
-      color: colors.modalText || colors.onSurface,
-      fontWeight: '500',
-    },
-    reviewsContainer: {
-      flex: 1,
-      minHeight: verticalScale(300),
-    },
-    reviewsList: {
-      paddingBottom: verticalScale(10),
-    },
-    reviewsListEmpty: {
+
+    // List
+    list: { flex: 1 },
+    listContent: { padding: scale(16), paddingBottom: verticalScale(120) },
+    listContentEmpty: {
       flexGrow: 1,
       justifyContent: 'center',
+      alignItems: 'center',
     },
+    centerBox: { alignItems: 'center', justifyContent: 'center' },
+    loadingText: {
+      marginTop: verticalScale(8),
+      color: colors.onSurfaceVariant,
+    },
+    emptyTitle: {
+      marginTop: verticalScale(12),
+      fontSize: moderateScale(16),
+      fontWeight: '600',
+      color: colors.onSurface,
+    },
+    emptySubtitle: {
+      marginTop: verticalScale(4),
+      fontSize: moderateScale(13),
+      color: colors.onSurfaceVariant,
+    },
+
+    // Review item
     reviewItem: {
       backgroundColor: colors.background,
       borderRadius: moderateScale(12),
-      padding: moderateScale(16),
+      padding: moderateScale(14),
       marginBottom: verticalScale(12),
       borderWidth: 1,
       borderColor: colors.outline + '20',
@@ -474,122 +382,101 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'flex-start',
-      marginBottom: verticalScale(12),
+      marginBottom: verticalScale(8),
     },
-    userInfo: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flex: 1,
-    },
+    userInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
     userIconContainer: {
-      width: moderateScale(40),
-      height: moderateScale(40),
-      borderRadius: moderateScale(20),
+      width: moderateScale(36),
+      height: moderateScale(36),
+      borderRadius: moderateScale(18),
       backgroundColor: colors.primary + '15',
       justifyContent: 'center',
       alignItems: 'center',
-      marginRight: I18nManager.isRTL ? 0 : scale(12),
-      marginLeft: I18nManager.isRTL ? scale(12) : 0,
+      marginRight: scale(10),
     },
-    userDetails: {
-      flex: 1,
-    },
+    userDetails: { flex: 1 },
     userName: {
-      fontSize: moderateScale(16),
+      fontSize: moderateScale(14),
       fontWeight: '600',
-      color: colors.modalText || colors.onSurface,
-      marginBottom: verticalScale(2),
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
+      color: colors.onSurface,
     },
     reviewDate: {
       fontSize: moderateScale(12),
       color: colors.onSurfaceVariant,
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
+      marginTop: verticalScale(2),
     },
-    ratingContainer: {
-      alignItems: 'flex-end',
-    },
-    starsRow: {
-      flexDirection: 'row',
-      marginBottom: verticalScale(2),
-    },
+    ratingContainer: { alignItems: 'flex-end', marginLeft: scale(8) },
     ratingValue: {
       fontSize: moderateScale(12),
-      color: colors.modalText || colors.onSurface,
-      fontWeight: '500',
+      color: colors.onSurfaceVariant,
+      marginTop: verticalScale(2),
     },
     commentContainer: {
       backgroundColor: colors.surface + '50',
       borderRadius: moderateScale(8),
-      padding: moderateScale(12),
+      padding: moderateScale(10),
       borderLeftWidth: 3,
       borderLeftColor: colors.primary,
     },
     commentText: {
       fontSize: moderateScale(14),
-      color: colors.modalText || colors.onSurface,
+      color: colors.onSurface,
       lineHeight: verticalScale(20),
-      textAlign: I18nManager.isRTL ? 'right' : 'left',
     },
-    emptyContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingVertical: verticalScale(40),
-    },
-    emptyTitle: {
-      fontSize: moderateScale(18),
-      fontWeight: '600',
-      color: colors.modalText || colors.onSurface,
-      textAlign: 'center',
-      marginTop: verticalScale(16),
-      marginBottom: verticalScale(8),
-    },
-    emptySubtitle: {
-      fontSize: moderateScale(14),
-      color: colors.onSurfaceVariant,
-      textAlign: 'center',
-    },
-    initialLoadingContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingVertical: verticalScale(40),
-    },
-    loadingFooter: {
+
+    footerLoading: {
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
-      paddingVertical: verticalScale(16),
-    },
-    loadingText: {
-      fontSize: moderateScale(14),
-      color: colors.onSurfaceVariant,
-      marginLeft: I18nManager.isRTL ? 0 : scale(8),
-      marginRight: I18nManager.isRTL ? scale(8) : 0,
-    },
-    errorContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingVertical: verticalScale(40),
-    },
-    errorText: {
-      fontSize: moderateScale(16),
-      color: colors.error,
-      textAlign: 'center',
-      marginBottom: verticalScale(16),
-    },
-    retryButton: {
-      backgroundColor: colors.buttonColor,
       paddingVertical: verticalScale(12),
-      paddingHorizontal: scale(24),
-      borderRadius: moderateScale(8),
     },
-    retryButtonText: {
-      fontSize: moderateScale(14),
+
+    // Composer
+    composer: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.outline + '40',
+      backgroundColor: colors.modalColor || colors.surface,
+      paddingHorizontal: scale(12),
+      paddingTop: verticalScale(8),
+      paddingBottom: verticalScale(12),
+    },
+    ratingPickerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: verticalScale(8),
+    },
+    composerLabel: { fontSize: moderateScale(13), color: colors.onSurface },
+    inputRow: { flexDirection: 'row', alignItems: 'flex-end' },
+    input: {
+      flex: 1,
+      minHeight: verticalScale(40),
+      maxHeight: verticalScale(110),
+      borderWidth: 1,
+      borderColor: colors.outline + '40',
+      borderRadius: moderateScale(10),
+      paddingHorizontal: scale(10),
+      paddingVertical: verticalScale(8),
+      color: colors.onSurface,
+      backgroundColor: colors.background,
+    },
+    sendBtn: {
+      marginLeft: scale(8),
+      paddingHorizontal: scale(16),
+      paddingVertical: verticalScale(10),
+      borderRadius: moderateScale(10),
+      backgroundColor: colors.buttonColor,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: scale(72),
+    },
+    sendBtnDisabled: {
+      opacity: 0.6,
+    },
+    sendBtnText: {
       color: colors.buttonTextColor,
-      fontWeight: '600',
+      fontWeight: '700',
+      fontSize: moderateScale(14),
     },
   });
 

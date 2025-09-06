@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Platform,
   Image,
+  RefreshControl,
 } from 'react-native';
 import {
   useTheme,
@@ -121,7 +122,17 @@ const PostScreen: React.FC = memo(() => {
   );
 
   // Fetch pets using the view model
-  const { pets, loading: petsLoading, error: petsError } = useMyPetsViewModel();
+  const {
+    pets,
+    loading: petsLoading,
+    error: petsError,
+    refresh,
+  } = useMyPetsViewModel();
+  const availablePets = useMemo(
+    () => pets.filter(p => !p.isLost && !p.isFound),
+    [pets],
+  );
+
   const BUDService = useMemo(() => new PetApiService(apiClient), []);
 
   // Contact hook and state
@@ -138,11 +149,22 @@ const PostScreen: React.FC = memo(() => {
   );
   const [additionalDetails, setAdditionalDetails] = useState('');
   const [isPosting, setIsPosting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const {
     getCurrentLocation,
     loading: currentLocationLoading,
     waitingForSettings,
   } = useLocationPermission();
+  const handleRefresh = useCallback(async () => {
+    try {
+      setRefreshing(true);
+      await refresh();
+    } catch (e) {
+      console.warn('Refresh failed', e);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh]);
 
   const handleFetchLocation = useCallback(async () => {
     const coords = await getCurrentLocation();
@@ -317,6 +339,14 @@ const PostScreen: React.FC = memo(() => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
       >
         {/* Pet Selection */}
         <View style={styles.section}>
@@ -336,14 +366,14 @@ const PostScreen: React.FC = memo(() => {
               />
             </View>
           </View>
-          {petsLoading && pets.length === 0 ? (
+          {petsLoading && availablePets.length === 0 ? (
             <ActivityIndicator size="large" color={colors.primary} />
           ) : petsError ? (
             <Text style={styles.errorText}>{petsError}</Text>
-          ) : pets.length === 0 ? (
+          ) : availablePets.length === 0 ? (
             <Text style={styles.noPetsText}>{t('no_pets_available')}</Text>
           ) : (
-            pets.map(renderPetCard)
+            availablePets.map(renderPetCard)
           )}
         </View>
 

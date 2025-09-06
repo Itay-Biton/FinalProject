@@ -1,5 +1,5 @@
-import React, { memo, useCallback } from 'react';
-import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import React, { memo, useCallback, useMemo } from 'react';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme, Text, Card, Divider } from 'react-native-paper';
 import { moderateScale, scale, verticalScale } from 'react-native-size-matters';
 import { useTranslation } from 'react-i18next';
@@ -18,16 +18,9 @@ import ChipIconSvg from '../../assets/icons/ic_chip.svg';
 import SpeciesIconSvg from '../../assets/icons/ic_species.svg';
 import FurIconSvg from '../../assets/icons/ic_fur.svg';
 import EyeIconSvg from '../../assets/icons/ic_eye.svg';
-import ProfileIconSvg from '../../assets/icons/ic_profile.svg';
+import EmailIconSvg from '../../assets/icons/ic_email2.svg';
+import CalendarIconSvg from '../../assets/icons/ic_calendar.svg';
 
-// Icon components
-const ProfileIcon = ({ color }: { color?: string }) => (
-  <ProfileIconSvg
-    width={moderateScale(16)}
-    height={moderateScale(16)}
-    stroke={color || 'black'}
-  />
-);
 const PhoneIcon = ({ color }: { color?: string }) => (
   <PhoneIconSvg
     width={moderateScale(16)}
@@ -105,9 +98,22 @@ const EyeIcon = ({ color }: { color?: string }) => (
     stroke={color || 'black'}
   />
 );
+const EmailIcon = ({ color }: { color?: string }) => (
+  <EmailIconSvg
+    width={moderateScale(16)}
+    height={moderateScale(16)}
+    stroke={color || 'black'}
+  />
+);
+const CalendarIcon = ({ color }: { color?: string }) => (
+  <CalendarIconSvg
+    width={moderateScale(16)}
+    height={moderateScale(16)}
+    stroke={color || 'black'}
+  />
+);
 
-// Pet data interface
-interface Pet {
+interface PetCardData {
   id: string;
   name: string;
   species: string;
@@ -117,8 +123,9 @@ interface Pet {
   eyeColor: string;
   weight: string;
   phones: string[];
-  location: string;
-  distance: string;
+  email?: string;
+  location: string; // address string (may be empty for default pets)
+  distance: string; // may be empty
   registrationDate: string;
   images: string[];
   description: string;
@@ -126,15 +133,25 @@ interface Pet {
   isFound: boolean;
   vaccinated: boolean;
   microchipped: boolean;
+  lostDetails?: {
+    dateLost?: string;
+    lastSeen?: { address?: string; coordinates?: [number, number] };
+    notes?: string;
+  };
+  foundDetails?: {
+    dateFound?: string;
+    location?: { address?: string; coordinates?: [number, number] };
+    notes?: string;
+  };
 }
 
-// Props interface
 interface PetCardProps {
-  pet: Pet;
+  pet: PetCardData;
   currentImageIndex: number;
   onImageIndexChange: (petId: string, index: number) => void;
   onImageScroll: (event: any, petId: string, imageCount: number) => void;
   onCall: (phones: string[]) => void;
+  onEmail: (email: string) => void;
   onViewDetails: (petId: string, petName: string) => void;
   onNavigate?: (petId: string, petName: string) => void;
 }
@@ -146,25 +163,52 @@ const PetCard: React.FC<PetCardProps> = memo(
     onImageIndexChange,
     onImageScroll,
     onCall,
+    onEmail,
     onViewDetails,
     onNavigate,
   }) => {
     const { colors }: { colors: ThemeColors } = useTheme();
     const { t } = useTranslation();
+    const styles = useMemo(() => createStyles(colors), [colors]);
+
+    const isStatusPet = pet.isLost || pet.isFound;
+
+    // Only show address/distance for LOST/FOUND and when address is non-empty
+    const trimmedAddress =
+      isStatusPet && typeof pet.location === 'string'
+        ? pet.location.trim()
+        : '';
+    const showLocation = isStatusPet && trimmedAddress.length > 0;
+
+    // Distance matches same gating to avoid implying nav for default pets
+    const showDistance =
+      isStatusPet &&
+      typeof pet.distance === 'string' &&
+      pet.distance.trim().length > 0;
 
     const handleNavigate = useCallback(() => {
-      if (onNavigate) {
-        onNavigate(pet.id, pet.name);
-      } else {
-        onViewDetails(pet.id, pet.name);
-      }
-    }, [pet.id, pet.name, onNavigate, onViewDetails]);
+      if (onNavigate) onNavigate(pet.id, pet.name);
+      else onViewDetails(pet.id, pet.name);
+    }, [onNavigate, onViewDetails, pet.id, pet.name]);
 
-    const styles = createStyles(colors);
+    // dateLost for lost, dateFound for found
+    const statusDate = pet.isLost
+      ? pet.lostDetails?.dateLost
+      : pet.isFound
+      ? pet.foundDetails?.dateFound
+      : undefined;
+    const prettyStatusDate = statusDate
+      ? new Date(statusDate).toLocaleDateString()
+      : undefined;
+    const statusDateLabel = pet.isLost
+      ? t('date_lost')
+      : pet.isFound
+      ? t('date_found')
+      : '';
 
     return (
       <Card key={pet.id} style={styles.petCard} mode="outlined">
-        {/* Image Slider & Status Overlay */}
+        {/* Images + status badge */}
         <View style={styles.imageSliderContainer}>
           <BusinessImageSlider
             images={pet.images}
@@ -196,6 +240,7 @@ const PetCard: React.FC<PetCardProps> = memo(
               <Text style={styles.petName} numberOfLines={2}>
                 {pet.name}
               </Text>
+
               <View style={styles.petBasicInfo}>
                 <View style={styles.speciesBreedContainer}>
                   <View style={styles.speciesChip}>
@@ -206,7 +251,13 @@ const PetCard: React.FC<PetCardProps> = memo(
                   </View>
                   <Text style={styles.breedText}>{pet.breed}</Text>
                 </View>
-                <Text style={styles.distanceText}>{pet.distance}</Text>
+
+                {/* ✅ Distance only for LOST/FOUND */}
+                {showDistance ? (
+                  <Text style={styles.distanceText}>{pet.distance}</Text>
+                ) : (
+                  <View style={{ width: moderateScale(1) }} />
+                )}
               </View>
             </View>
           </View>
@@ -233,24 +284,39 @@ const PetCard: React.FC<PetCardProps> = memo(
             </View>
           </View>
 
-          {/* Info Grid */}
-          <View style={styles.petInfoGrid}>
-            <View style={styles.infoItem}>
-              <LocationIcon color={colors.primary} />
-              <Text style={styles.infoText} numberOfLines={2}>
-                {pet.location}
-              </Text>
+          {/* ✅ Info Grid: only render location row when LOST/FOUND + address exists */}
+          {(showLocation || (isStatusPet && prettyStatusDate)) && (
+            <View style={styles.petInfoGrid}>
+              {showLocation && (
+                <View style={styles.infoItem}>
+                  <LocationIcon color={colors.primary} />
+                  <Text style={styles.infoText} numberOfLines={2}>
+                    {trimmedAddress}
+                  </Text>
+                </View>
+              )}
+
+              {isStatusPet && prettyStatusDate && (
+                <View style={styles.infoItem}>
+                  <CalendarIcon color={colors.primary} />
+                  <Text style={styles.infoText} numberOfLines={1}>
+                    {statusDateLabel}: {prettyStatusDate}
+                  </Text>
+                </View>
+              )}
             </View>
-          </View>
+          )}
 
           {/* Description */}
-          <View style={styles.descriptionContainer}>
-            <Text style={styles.petDescription} numberOfLines={3}>
-              {pet.description}
-            </Text>
-          </View>
+          {pet.description ? (
+            <View style={styles.descriptionContainer}>
+              <Text style={styles.petDescription} numberOfLines={3}>
+                {pet.description}
+              </Text>
+            </View>
+          ) : null}
 
-          {/* Health Status */}
+          {/* Health */}
           <View style={styles.healthStatusContainer}>
             <View
               style={[
@@ -296,40 +362,58 @@ const PetCard: React.FC<PetCardProps> = memo(
 
           <Divider style={styles.divider} />
 
-          {/* Contact Buttons */}
-          <View style={styles.contactSection}>
-            <View style={styles.contactButtons}>
-              {pet.phones.length > 0 && (
+          {/* Contact / Actions — only for LOST/FOUND */}
+          {isStatusPet ? (
+            <View style={styles.contactSection}>
+              <View style={styles.contactButtons}>
                 <TouchableOpacity
                   style={styles.contactButton}
-                  onPress={() => onCall(pet.phones)}
+                  onPress={handleNavigate}
                 >
                   <View style={styles.contactButtonContent}>
-                    <PhoneIcon color={colors.buttonTextColor} />
-                    <Text style={styles.contactButtonText}>{t('call')}</Text>
+                    <NavigateIcon color={colors.buttonTextColor} />
+                    <Text style={styles.contactButtonText}>
+                      {t('navigate')}
+                    </Text>
                   </View>
                 </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={styles.contactButton}
-                onPress={() => onViewDetails(pet.id, pet.name)}
-              >
-                <View style={styles.contactButtonContent}>
-                  <ViewIcon color={colors.buttonTextColor} />
-                  <Text style={styles.contactButtonText}>{t('details')}</Text>
-                </View>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.contactButton}
-                onPress={handleNavigate}
-              >
-                <View style={styles.contactButtonContent}>
-                  <NavigateIcon color={colors.buttonTextColor} />
-                  <Text style={styles.contactButtonText}>{t('navigate')}</Text>
-                </View>
-              </TouchableOpacity>
+
+                {pet.phones.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.contactButton}
+                    onPress={() => onCall(pet.phones)}
+                  >
+                    <View style={styles.contactButtonContent}>
+                      <PhoneIcon color={colors.buttonTextColor} />
+                      <Text style={styles.contactButtonText}>{t('call')}</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={styles.contactButton}
+                  onPress={() => onViewDetails(pet.id, pet.name)}
+                >
+                  <View style={styles.contactButtonContent}>
+                    <ViewIcon color={colors.buttonTextColor} />
+                    <Text style={styles.contactButtonText}>{t('details')}</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {!!pet.email && (
+                  <TouchableOpacity
+                    style={styles.contactButton}
+                    onPress={() => onEmail(pet.email!)}
+                  >
+                    <View style={styles.contactButtonContent}>
+                      <EmailIcon color={colors.buttonTextColor} />
+                      <Text style={styles.contactButtonText}>{t('email')}</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
-          </View>
+          ) : null}
         </Card.Content>
       </Card>
     );
@@ -366,11 +450,11 @@ const createStyles = (colors: ThemeColors) =>
       height: moderateScale(50),
       justifyContent: 'center',
       alignItems: 'center',
+      elevation: 3,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.25,
       shadowRadius: 3.84,
-      elevation: 3,
     },
     lostStatusCircle: { backgroundColor: '#FF5722' },
     foundStatusCircle: { backgroundColor: '#4CAF50' },
@@ -541,7 +625,5 @@ const createStyles = (colors: ThemeColors) =>
       marginLeft: scale(6),
     },
   });
-
-PetCard.displayName = 'PetCard';
 
 export default PetCard;

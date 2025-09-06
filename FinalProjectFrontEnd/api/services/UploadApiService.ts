@@ -7,6 +7,7 @@ import {
   DeleteImageRequest,
   DeleteImageResponse,
 } from '../../types/upload';
+import { ensureFileReady } from '../../utils/ensureFileReady';
 
 class UploadApiService {
   private apiClient: ApiClient;
@@ -31,6 +32,8 @@ class UploadApiService {
           ? uploadData.file.uri
           : `file://${uploadData.file.uri}`
         : uploadData.file.uri.replace(/^file:\/\//, '');
+
+    await ensureFileReady(normalizedUri);
 
     // Append the file
     formData.append('file', {

@@ -1,5 +1,3 @@
-// types/pet.ts
-
 // ─── PAGINATION INFO ────────────────────────────────────────────────────────
 export interface PaginationInfo {
   total: number;
@@ -30,6 +28,26 @@ export interface HealthHistoryEntry {
   details: string;
 }
 
+// ─── LOST DETAILS ───────────────────────────────────────────────────────────
+export interface LostDetails {
+  dateLost?: string; // ISO
+  lastSeen?: {
+    address?: string;
+    coordinates?: [number, number]; // [lng, lat]
+  };
+  notes?: string;
+}
+
+// ─── FOUND DETAILS ──────────────────────────────────────────────────────────
+export interface FoundDetails {
+  dateFound?: string; // ISO
+  location?: {
+    address?: string;
+    coordinates?: [number, number]; // [lng, lat]
+  };
+  notes?: string;
+}
+
 // ─── PET MODEL ──────────────────────────────────────────────────────────────
 export interface Pet {
   _id: string;
@@ -44,10 +62,20 @@ export interface Pet {
   weight?: PetWeight;
   images: string[];
   description?: string;
+
+  // Contact (root)
+  phoneNumbers: string[]; // ← back on root
+  email?: string; // ← new optional
+
+  // Flags
   isLost: boolean;
   isFound: boolean;
-  phoneNumbers: string[];
+
+  // Locations/details
   location?: PetLocation;
+  lostDetails?: LostDetails;
+  foundDetails?: FoundDetails;
+
   distance?: string;
   registrationDate: string;
   vaccinated?: boolean;
@@ -70,12 +98,21 @@ export interface MyPetEntry {
   weight: PetWeight;
   images: string[];
   description?: string;
+
+  // Contact
+  phoneNumbers: string[]; // ← back
+  email?: string; // ← new
+
+  // Flags
   isLost: boolean;
   isFound: boolean;
-  phoneNumbers: string[];
+
+  // Details
   vaccinated?: boolean;
   microchipped?: boolean;
   registrationDate: string;
+  lostDetails?: LostDetails;
+  foundDetails?: FoundDetails;
 }
 
 // ─── PET LIST RESPONSE ──────────────────────────────────────────────────────
@@ -110,19 +147,33 @@ export interface CreatePetRequest {
   weight?: PetWeight;
   images?: string[];
   description?: string;
+
+  // Contact
+  phoneNumbers?: string[]; // ← back
+  email?: string; // ← new
+
+  // Flags
   isLost?: boolean;
   isFound?: boolean;
-  phoneNumbers?: string[];
+
+  // Current location
   address?: string;
   lat?: number;
   lng?: number;
+
+  // Health
   vaccinated?: boolean;
   microchipped?: boolean;
   healthHistory?: HealthHistoryEntry[];
+
+  // Details
+  lostDetails?: LostDetails;
+  foundDetails?: FoundDetails;
 }
 
 // ─── UPDATE PET REQUEST ─────────────────────────────────────────────────────
 export interface UpdatePetRequest extends Partial<CreatePetRequest> {
+  // (legacy) not used by server, preserved for callers
   location?: {
     address: string;
     coordinates: {
@@ -131,7 +182,6 @@ export interface UpdatePetRequest extends Partial<CreatePetRequest> {
     };
   };
   isFound?: boolean;
-  phoneNumbers?: string[];
 }
 
 // ─── PET SEARCH PARAMS ──────────────────────────────────────────────────────

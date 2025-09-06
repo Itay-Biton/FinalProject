@@ -7,7 +7,7 @@ import { ThemeColors } from '../../types/theme';
 import { Pet, MyPetEntry, PetWeight } from '../../types/pet';
 import PetImageSlider from '../UI/PetImageSlider';
 
-// Icons
+// SVG icons
 import EditIconSvg from '../../assets/icons/ic_edit.svg';
 import DeleteIconSvg from '../../assets/icons/ic_delete.svg';
 import EyeIconSvg from '../../assets/icons/ic_eye.svg';
@@ -17,118 +17,48 @@ import WeightIconSvg from '../../assets/icons/ic_weight.svg';
 import VaccinatedIconSvg from '../../assets/icons/ic_vaccinated.svg';
 import ChipIconSvg from '../../assets/icons/ic_chip.svg';
 import SpeciesIconSvg from '../../assets/icons/ic_species.svg';
-import BirthdayIconSvg from '../../assets/icons/ic_age.svg'; // New icon
-import LocationIconSvg from '../../assets/icons/ic_location.svg'; // New icon
-import DistanceIconSvg from '../../assets/icons/ic_lock.svg'; // New icon
+import BirthdayIconSvg from '../../assets/icons/ic_age.svg';
+import LocationIconSvg from '../../assets/icons/ic_location.svg';
+import DistanceIconSvg from '../../assets/icons/ic_lock.svg';
+// If you have your own check-circle svg, uncomment and use it instead of the MDI string:
+// import CheckCircleSvg from '../../assets/icons/ic_check_circle.svg';
 
-// Icon components
-const EditIcon = ({ color }: { color?: string }) => (
-  <EditIconSvg
-    width={moderateScale(20)}
-    height={moderateScale(20)}
-    stroke={color || 'black'}
-  />
-);
-
-const DeleteIcon = ({ color }: { color?: string }) => (
-  <DeleteIconSvg
-    width={moderateScale(20)}
-    height={moderateScale(20)}
-    stroke={color || 'black'}
-  />
-);
-
-const EyeIcon = ({ color }: { color?: string }) => (
-  <EyeIconSvg
-    width={moderateScale(14)}
-    height={moderateScale(14)}
-    stroke={color || 'black'}
-  />
-);
-
-const FurIcon = ({ color }: { color?: string }) => (
-  <FurIconSvg
-    width={moderateScale(14)}
-    height={moderateScale(14)}
-    stroke={color || 'black'}
-  />
-);
-
-const AgeIcon = ({ color }: { color?: string }) => (
-  <AgeIconSvg
-    width={moderateScale(14)}
-    height={moderateScale(14)}
-    stroke={color || 'black'}
-  />
-);
-
-const WeightIcon = ({ color }: { color?: string }) => (
-  <WeightIconSvg
-    width={moderateScale(14)}
-    height={moderateScale(14)}
-    stroke={color || 'black'}
-  />
-);
-
-const VaccinatedIcon = ({ color }: { color?: string }) => (
-  <VaccinatedIconSvg
-    width={moderateScale(16)}
-    height={moderateScale(16)}
-    stroke={color || 'black'}
-  />
-);
-
-const ChipIcon = ({ color }: { color?: string }) => (
-  <ChipIconSvg
-    width={moderateScale(16)}
-    height={moderateScale(16)}
-    stroke={color || 'black'}
-  />
-);
-
-const SpeciesIcon = ({ color }: { color?: string }) => (
-  <SpeciesIconSvg
-    width={moderateScale(16)}
-    height={moderateScale(16)}
-    stroke={color || 'black'}
-  />
-);
-
-const BirthdayIcon = ({ color }: { color?: string }) => (
-  <BirthdayIconSvg
-    width={moderateScale(14)}
-    height={moderateScale(14)}
-    stroke={color || 'black'}
-  />
-);
-
-const LocationIcon = ({ color }: { color?: string }) => (
-  <LocationIconSvg
-    width={moderateScale(14)}
-    height={moderateScale(14)}
-    stroke={color || 'black'}
-  />
-);
-
-const DistanceIcon = ({ color }: { color?: string }) => (
-  <DistanceIconSvg
-    width={moderateScale(14)}
-    height={moderateScale(14)}
-    stroke={color || 'black'}
-  />
-);
-
-// Icon render functions
-const renderEditIcon = (color: string) => () => <EditIcon color={color} />;
-const renderDeleteIcon = (color: string) => () => <DeleteIcon color={color} />;
-
-// Union type for flexibility - works with both Pet and MyPetEntry
 type PetCardData = Pet | MyPetEntry;
+
+/** Wrap a react-native-svg component so it can be used as a Paper IconSource */
+const createSvgIcon =
+  (SvgComp: any) =>
+  ({ size, color }: { size: number; color: string }) =>
+    (
+      <SvgComp
+        width={size}
+        height={size}
+        // Most of your line icons use strokes; apply both to be safe:
+        stroke={color}
+        fill="none"
+      />
+    );
+
+const EditIcon = createSvgIcon(EditIconSvg);
+const DeleteIcon = createSvgIcon(DeleteIconSvg);
+const EyeIcon = createSvgIcon(EyeIconSvg);
+const FurIcon = createSvgIcon(FurIconSvg);
+const AgeIcon = createSvgIcon(AgeIconSvg);
+const WeightIcon = createSvgIcon(WeightIconSvg);
+const VaccinatedIcon = createSvgIcon(VaccinatedIconSvg);
+const ChipIcon = createSvgIcon(ChipIconSvg);
+const SpeciesIcon = createSvgIcon(SpeciesIconSvg);
+const BirthdayIcon = createSvgIcon(BirthdayIconSvg);
+const LocationIcon = createSvgIcon(LocationIconSvg);
+const DistanceIcon = createSvgIcon(DistanceIconSvg);
+// const CheckCircleIcon = createSvgIcon(CheckCircleSvg); // use if you prefer SVG over font icon
 
 interface MyPetCardProps {
   pet: PetCardData;
   currentImageIndex: number;
-  onEditPet: (petId: string) => void;
+  onOpenEdit?: (pet: PetCardData) => void;
+  onMarkFound?: (pet: PetCardData) => void;
+  onEditPet?: (pet: PetCardData) => void; // legacy
   onDeletePet: (petId: string, petName: string) => void;
   onImageIndexChange: (petId: string, index: number) => void;
   onImageScroll: (event: any, petId: string, imageCount: number) => void;
@@ -138,6 +68,8 @@ const MyPetCard: React.FC<MyPetCardProps> = memo(
   ({
     pet,
     currentImageIndex,
+    onOpenEdit,
+    onMarkFound,
     onEditPet,
     onDeletePet,
     onImageIndexChange,
@@ -145,88 +77,103 @@ const MyPetCard: React.FC<MyPetCardProps> = memo(
   }) => {
     const { colors }: { colors: ThemeColors } = useTheme();
     const { t } = useTranslation();
+    const styles = getStyles(colors);
 
-    // Helper to get pet ID (handle both _id and id)
-    const getPetId = (pet: PetCardData): string => {
-      return (pet as Pet)._id || (pet as MyPetEntry).id;
-    };
+    const getPetId = (p: PetCardData): string =>
+      (p as Pet)._id || (p as MyPetEntry).id;
 
-    // Helper function to parse age (string or number)
     const parseAge = (age?: string | number): number => {
       if (typeof age === 'number') return age;
       if (typeof age === 'string') return parseFloat(age) || 0;
       return 0;
     };
 
-    // Helper function to format age with translation
     const formatAge = useCallback(
       (age?: string | number) => {
         if (!age) return null;
-        const ageNum = parseAge(age);
-        const formattedAge =
-          ageNum % 1 === 0 ? ageNum.toString() : ageNum.toFixed(1);
-        return `${formattedAge} ${t('years')}`;
+        const n = parseAge(age);
+        const formatted = n % 1 === 0 ? n.toString() : n.toFixed(1);
+        return `${formatted} ${t('years')}`;
       },
       [t],
     );
 
-    // Helper function to format birthday
     const formatBirthday = useCallback((birthday?: string) => {
       if (!birthday) return null;
       const date = new Date(birthday);
       return date.toLocaleDateString();
     }, []);
 
-    // Helper function to format weight with translation
     const formatWeight = useCallback(
       (weight?: PetWeight) => {
         if (!weight) return null;
-        const formattedWeight =
+        const formatted =
           weight.value % 1 === 0
             ? weight.value.toString()
             : weight.value.toFixed(1);
-        return `${formattedWeight} ${t(weight.unit)}`;
+        return `${formatted} ${t(weight.unit)}`;
       },
       [t],
     );
 
-    // Helper function to format location
-    const formatLocation = useCallback((location?: any) => {
-      if (!location?.address) return null;
-      // Truncate long addresses
-      return location.address.length > 30
-        ? `${location.address.substring(0, 30)}...`
-        : location.address;
-    }, []);
+    const isLost = (pet as Pet).isLost === true;
+    const isFound = (pet as Pet).isFound === true;
+    const statusAllowsLocation = isLost || isFound;
 
-    const handleEditPress = useCallback(() => {
-      onEditPet(getPetId(pet));
-    }, [onEditPet, pet]);
+    const rawAddress = statusAllowsLocation
+      ? (pet as Pet)?.location?.address
+      : undefined;
+    const trimmedAddress =
+      typeof rawAddress === 'string' ? rawAddress.trim() : '';
+    const hasAddress = Boolean(trimmedAddress);
 
-    const handleDeletePress = useCallback(() => {
-      onDeletePet(getPetId(pet), pet.name);
-    }, [onDeletePet, pet]);
+    const formattedLocation = hasAddress
+      ? trimmedAddress.length > 30
+        ? `${trimmedAddress.substring(0, 30)}...`
+        : trimmedAddress
+      : null;
 
-    const styles = getStyles(colors);
+    const rawDistance = statusAllowsLocation
+      ? (pet as Pet).distance
+      : undefined;
+    const distance =
+      typeof rawDistance === 'string' && rawDistance.trim() !== ''
+        ? rawDistance
+        : undefined;
+
+    const showInfoRow = Boolean(distance) || Boolean(formattedLocation);
 
     const petId = getPetId(pet);
-    const formattedAge = formatAge(pet.age);
+    const formattedAge = formatAge((pet as any).age);
     const formattedBirthday = formatBirthday((pet as Pet).birthday);
-    const formattedWeight = formatWeight(pet.weight);
-    const formattedLocation = formatLocation((pet as Pet).location);
-    const distance = (pet as Pet).distance;
+    const formattedWeight = formatWeight((pet as any).weight);
+
+    const handleDeletePress = useCallback(() => {
+      onDeletePet(getPetId(pet), (pet as any).name);
+    }, [onDeletePet, pet]);
+
+    const handleOpenEditPress = useCallback(() => {
+      onOpenEdit?.(pet);
+    }, [onOpenEdit, pet]);
+
+    const handleMarkFoundPress = useCallback(() => {
+      onMarkFound?.(pet);
+    }, [onMarkFound, pet]);
+
+    const handleLegacyEditPress = useCallback(() => {
+      onEditPet?.(pet);
+    }, [onEditPet, pet]);
 
     return (
       <Card style={styles.petCard} mode="outlined">
         <Card.Content style={styles.petCardContent}>
-          {/* Main Pet Info Section */}
           <View style={styles.petMainInfo}>
             <View style={styles.petImageContainer}>
               <PetImageSlider
-                images={pet.images}
+                images={(pet as any).images}
                 petId={petId}
-                isLost={pet.isLost}
-                isFound={pet.isFound}
+                isLost={(pet as Pet).isLost}
+                isFound={(pet as Pet).isFound}
                 currentIndex={currentImageIndex}
                 onIndexChange={onImageIndexChange}
                 onScroll={onImageScroll}
@@ -237,69 +184,121 @@ const MyPetCard: React.FC<MyPetCardProps> = memo(
             <View style={styles.petInfoSection}>
               <View style={styles.petHeader}>
                 <View style={styles.petTitleContainer}>
-                  <Text style={styles.petName}>{pet.name}</Text>
-                  {pet.breed && (
-                    <Text style={styles.petBreed}>{pet.breed}</Text>
+                  <Text style={styles.petName}>{(pet as any).name}</Text>
+                  {!!(pet as any).breed && (
+                    <Text style={styles.petBreed}>{(pet as any).breed}</Text>
                   )}
                 </View>
 
                 <View style={styles.petActions}>
-                  {/* <IconButton
-                    icon={renderEditIcon(colors.primary)}
-                    size={moderateScale(22)}
-                    onPress={handleEditPress}
-                    style={styles.actionButton}
-                  /> */}
+                  {/* EDIT — always when provided */}
+                  {onOpenEdit && (
+                    <IconButton
+                      icon={EditIcon}
+                      size={moderateScale(22)}
+                      iconColor={colors.primary}
+                      onPress={handleOpenEditPress}
+                      style={styles.actionButton}
+                      accessibilityLabel={t('edit')}
+                    />
+                  )}
+
+                  {/* FOUND — show only when LOST and handler provided */}
+                  {isLost && onMarkFound && (
+                    <IconButton
+                      // If RN Vector Icons are linked, this works:
+                      icon="check-circle-outline"
+                      // Otherwise, switch to your SVG:
+                      // icon={CheckCircleIcon}
+                      size={moderateScale(22)}
+                      iconColor="#4CAF50"
+                      onPress={handleMarkFoundPress}
+                      style={styles.actionButton}
+                      accessibilityLabel={t('mark_as_found', {
+                        defaultValue: 'Mark as found',
+                      })}
+                    />
+                  )}
+
+                  {/* Optional legacy special edit (kept for backwards-compat) */}
+                  {isLost && onEditPet && (
+                    <IconButton
+                      icon={EditIcon}
+                      size={moderateScale(22)}
+                      iconColor="#e7d6d1ff"
+                      onPress={handleLegacyEditPress}
+                      style={styles.actionButton}
+                      accessibilityLabel={t('edit')}
+                    />
+                  )}
+
+                  {/* DELETE */}
                   <IconButton
-                    icon={renderDeleteIcon('#FF5722')}
+                    icon={DeleteIcon}
                     size={moderateScale(22)}
+                    iconColor="#FF5722"
                     onPress={handleDeletePress}
                     style={styles.actionButton}
+                    accessibilityLabel={t('delete')}
                   />
                 </View>
               </View>
 
-              {/* Pet Characteristics Row */}
               <View style={styles.characteristicsRow}>
-                {formattedAge && (
+                {!!formattedAge && (
                   <View style={styles.characteristicPill}>
-                    <AgeIcon color={colors.buttonTextColor!!} />
+                    <AgeIcon
+                      size={moderateScale(14) as any}
+                      color={colors.buttonTextColor!}
+                    />
                     <Text style={styles.characteristicText}>
                       {formattedAge}
                     </Text>
                   </View>
                 )}
 
-                {formattedBirthday && (
+                {!!formattedBirthday && (
                   <View style={styles.characteristicPill}>
-                    <BirthdayIcon color={colors.buttonTextColor!!} />
+                    <BirthdayIcon
+                      size={moderateScale(14) as any}
+                      color={colors.buttonTextColor!}
+                    />
                     <Text style={styles.characteristicText}>
                       {formattedBirthday}
                     </Text>
                   </View>
                 )}
 
-                {pet.furColor && (
+                {!!(pet as any).furColor && (
                   <View style={styles.characteristicPill}>
-                    <FurIcon color={colors.buttonTextColor!!} />
+                    <FurIcon
+                      size={moderateScale(14) as any}
+                      color={colors.buttonTextColor!}
+                    />
                     <Text style={styles.characteristicText}>
-                      {t(pet.furColor)}
+                      {t((pet as any).furColor)}
                     </Text>
                   </View>
                 )}
 
-                {pet.eyeColor && (
+                {!!(pet as any).eyeColor && (
                   <View style={styles.characteristicPill}>
-                    <EyeIcon color={colors.buttonTextColor!!} />
+                    <EyeIcon
+                      size={moderateScale(14) as any}
+                      color={colors.buttonTextColor!}
+                    />
                     <Text style={styles.characteristicText}>
-                      {t(pet.eyeColor)}
+                      {t((pet as any).eyeColor)}
                     </Text>
                   </View>
                 )}
 
-                {formattedWeight && (
+                {!!formattedWeight && (
                   <View style={styles.characteristicPill}>
-                    <WeightIcon color={colors.buttonTextColor!!} />
+                    <WeightIcon
+                      size={moderateScale(14) as any}
+                      color={colors.buttonTextColor!}
+                    />
                     <Text style={styles.characteristicText}>
                       {formattedWeight}
                     </Text>
@@ -307,90 +306,105 @@ const MyPetCard: React.FC<MyPetCardProps> = memo(
                 )}
               </View>
 
-              {/* Distance and Location Row */}
-              <View style={styles.infoRow}>
-                {distance && (
-                  <View style={styles.infoItem}>
-                    <DistanceIcon color={colors.primary} />
-                    <Text style={styles.infoText}>{distance}</Text>
-                  </View>
-                )}
+              {/* Only when LOST/FOUND & address/distance available */}
+              {(Boolean(distance) || Boolean(formattedLocation)) && (
+                <View style={styles.infoRow}>
+                  {!!distance && (
+                    <View style={styles.infoItem}>
+                      <DistanceIcon
+                        size={moderateScale(14) as any}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.infoText}>{distance}</Text>
+                    </View>
+                  )}
 
-                {formattedLocation && (
-                  <View style={styles.infoItem}>
-                    <LocationIcon color={colors.primary} />
-                    <Text style={styles.infoText}>{formattedLocation}</Text>
-                  </View>
-                )}
-              </View>
+                  {!!formattedLocation && (
+                    <View style={styles.infoItem}>
+                      <LocationIcon
+                        size={moderateScale(14) as any}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.infoText}>{formattedLocation}</Text>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
           </View>
 
-          {/* Description */}
-          {pet.description && (
+          {!!(pet as any).description && (
             <View style={styles.descriptionContainer}>
               <Text style={styles.petDescription} numberOfLines={2}>
-                {pet.description}
+                {(pet as any).description}
               </Text>
             </View>
           )}
 
-          {/* Bottom Section with Health Status and Species */}
           <View style={styles.bottomSection}>
             <View style={styles.healthStatusContainer}>
-              {pet.vaccinated !== undefined && (
+              {(pet as any).vaccinated !== undefined && (
                 <View
                   style={[
                     styles.healthIndicator,
-                    pet.vaccinated
+                    (pet as any).vaccinated
                       ? styles.healthIndicatorPositive
                       : styles.healthIndicatorNegative,
                   ]}
                 >
                   <VaccinatedIcon
-                    color={pet.vaccinated ? '#4CAF50' : '#FF5722'}
+                    size={moderateScale(16) as any}
+                    color={(pet as any).vaccinated ? '#4CAF50' : '#FF5722'}
                   />
                   <Text
                     style={[
                       styles.healthIndicatorText,
-                      pet.vaccinated
+                      (pet as any).vaccinated
                         ? styles.healthTextPositive
                         : styles.healthTextNegative,
                     ]}
                   >
-                    {pet.vaccinated ? t('vaccinated') : t('needs_vaccine')}
+                    {(pet as any).vaccinated
+                      ? t('vaccinated')
+                      : t('needs_vaccine')}
                   </Text>
                 </View>
               )}
 
-              {pet.microchipped !== undefined && (
+              {(pet as any).microchipped !== undefined && (
                 <View
                   style={[
                     styles.healthIndicator,
-                    pet.microchipped
+                    (pet as any).microchipped
                       ? styles.healthIndicatorPositive
                       : styles.healthIndicatorNegative,
                   ]}
                 >
-                  <ChipIcon color={pet.microchipped ? '#4CAF50' : '#FF5722'} />
+                  <ChipIcon
+                    size={moderateScale(16) as any}
+                    color={(pet as any).microchipped ? '#4CAF50' : '#FF5722'}
+                  />
                   <Text
                     style={[
                       styles.healthIndicatorText,
-                      pet.microchipped
+                      (pet as any).microchipped
                         ? styles.healthTextPositive
                         : styles.healthTextNegative,
                     ]}
                   >
-                    {pet.microchipped ? t('chipped') : t('no_chip')}
+                    {(pet as any).microchipped ? t('chipped') : t('no_chip')}
                   </Text>
                 </View>
               )}
             </View>
 
             <View style={styles.speciesChip}>
-              <SpeciesIcon color={colors.buttonTextColor!!} />
+              <SpeciesIcon
+                size={moderateScale(16) as any}
+                color={colors.buttonTextColor!}
+              />
               <Text style={styles.speciesChipText}>
-                {t(pet.species).toUpperCase()}
+                {t((pet as any).species).toUpperCase()}
               </Text>
             </View>
           </View>
@@ -451,10 +465,7 @@ const getStyles = (colors: ThemeColors) =>
     petActions: {
       flexDirection: 'row',
     },
-    actionButton: {
-      margin: 0,
-      marginLeft: scale(4),
-    },
+    actionButton: { margin: 0, marginLeft: scale(4) },
     characteristicsRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -472,7 +483,7 @@ const getStyles = (colors: ThemeColors) =>
     },
     characteristicText: {
       fontSize: moderateScale(12),
-      color: colors.buttonTextColor!!,
+      color: colors.buttonTextColor!,
       marginLeft: scale(4),
       fontWeight: '500',
     },
@@ -495,7 +506,7 @@ const getStyles = (colors: ThemeColors) =>
     descriptionContainer: {
       backgroundColor: colors.background + '08',
       borderRadius: moderateScale(12),
-      paddingHorizontal: scale(16), // Align with main content
+      paddingHorizontal: scale(16),
       paddingVertical: verticalScale(12),
       marginBottom: verticalScale(16),
       borderWidth: 1,
@@ -503,7 +514,7 @@ const getStyles = (colors: ThemeColors) =>
     },
     petDescription: {
       fontSize: moderateScale(14),
-      color: colors.onSurface + 'AA', // More muted/disabled appearance
+      color: colors.onSurface + 'AA',
       lineHeight: verticalScale(20),
       textAlign: 'left',
       fontStyle: 'italic',
@@ -513,10 +524,7 @@ const getStyles = (colors: ThemeColors) =>
       justifyContent: 'space-between',
       alignItems: 'center',
     },
-    healthStatusContainer: {
-      flexDirection: 'row',
-      flex: 1,
-    },
+    healthStatusContainer: { flexDirection: 'row', flex: 1 },
     healthIndicator: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -541,12 +549,8 @@ const getStyles = (colors: ThemeColors) =>
       backgroundColor: '#FF5722' + '20',
       borderColor: '#FF5722',
     },
-    healthTextPositive: {
-      color: '#4CAF50',
-    },
-    healthTextNegative: {
-      color: '#FF5722',
-    },
+    healthTextPositive: { color: '#4CAF50' },
+    healthTextNegative: { color: '#FF5722' },
     speciesChip: {
       flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
       alignItems: 'center',
@@ -557,7 +561,7 @@ const getStyles = (colors: ThemeColors) =>
       alignSelf: 'center',
     },
     speciesChipText: {
-      color: colors.buttonTextColor!!,
+      color: colors.buttonTextColor!,
       fontSize: moderateScale(12),
       fontWeight: '600',
       marginLeft: I18nManager.isRTL ? 0 : scale(4),
@@ -566,5 +570,4 @@ const getStyles = (colors: ThemeColors) =>
   });
 
 MyPetCard.displayName = 'MyPetCard';
-
 export default MyPetCard;

@@ -1,4 +1,3 @@
-// screens/Profile/MyPetsScreen.tsx
 import React, { useMemo, memo, useRef, useCallback } from 'react';
 import {
   View,
@@ -20,7 +19,7 @@ import { ThemeColors } from '../../types/theme';
 import { Pet, MyPetEntry } from '../../types/pet';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../../navigation/AppNavigator'; // Import the root stack types
+import { RootStackParamList } from '../../navigation/AppNavigator';
 import Hamburger, {
   HamburgerHandle,
 } from '../../components/Animations/Hamburger';
@@ -32,6 +31,8 @@ type MyPetsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 // Icons
 import AddIconSvg from '../../assets/icons/ic_add.svg';
+import { petApi } from '../../api';
+
 const AddIcon = ({ color }: { color?: string }) => (
   <AddIconSvg
     width={moderateScale(30)}
@@ -61,7 +62,7 @@ const MyPetsScreen: React.FC = memo(() => {
     hamburgerRef.current?.start();
   };
 
-  // ViewModel - expecting it to return pets with the new Pet/MyPetEntry types
+  // ViewModel
   const { pets, loading, loadingMore, error, loadMore, refresh, deletePet } =
     useMyPetsViewModel();
 
@@ -86,7 +87,6 @@ const MyPetsScreen: React.FC = memo(() => {
             onPress: async () => {
               try {
                 await deletePet(petId);
-                // The ViewModel should handle refreshing the list
               } catch (errorX: any) {
                 Alert.alert(
                   t('error', { defaultValue: 'Error' }),
@@ -104,15 +104,36 @@ const MyPetsScreen: React.FC = memo(() => {
     [t, deletePet],
   );
 
-  const handleEditPet = useCallback((petId: string) => {
-    // Navigate to edit pet screen
-    console.log('x');
-  }, []);
+  // Mark LOST pet as FOUND
+  const handleMarkPetFound = useCallback(
+    async (pet: Pet | MyPetEntry) => {
+      const petId = getPetId(pet);
+      try {
+        await petApi.foundMyPet(petId, { isLost: false } as any);
+        refresh();
+      } catch (err) {
+        console.error('Failed to mark pet as found:', err);
+      }
+    },
+    [refresh],
+  );
 
   const handleAddPet = useCallback(() => {
-    // Navigate to RegisterPetNavigation
-    navigation.navigate('RegisterPetNavigation');
+    navigation.navigate('RegisterPetNavigation' as any);
   }, [navigation]);
+
+  // Open Edit → First Step
+  const handleOpenEditPet = useCallback(
+    (pet: Pet | MyPetEntry) => {
+      const petId = getPetId(pet);
+      // @ts-ignore (ensure RootStackParamList has EditPetNavigation)
+      navigation.navigate('EditPetNavigation', {
+        screen: 'EditPetFirstStep',
+        params: { petId },
+      });
+    },
+    [navigation],
+  );
 
   // Image slider index state
   const [currentImageIndices, setCurrentImageIndices] = React.useState<
@@ -223,7 +244,8 @@ const MyPetsScreen: React.FC = memo(() => {
                 currentImageIndex={currentImageIndices[petId] || 0}
                 onImageScroll={handleImageScroll}
                 onImageIndexChange={handleImageIndexChange}
-                onEditPet={handleEditPet}
+                onOpenEdit={handleOpenEditPet} // ✏️ always visible
+                onMarkFound={pet.isLost ? handleMarkPetFound : undefined} // ✅ visible when lost
                 onDeletePet={handleDeletePet}
               />
             );
@@ -360,10 +382,7 @@ const createStyles = (width: number, height: number, colors: ThemeColors) =>
       alignItems: 'center',
       elevation: 6,
       shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 3,
-      },
+      shadowOffset: { width: 0, height: 3 },
       shadowOpacity: 0.27,
       shadowRadius: 4.65,
     },

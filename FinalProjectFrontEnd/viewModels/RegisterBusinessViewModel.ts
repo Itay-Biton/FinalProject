@@ -10,6 +10,7 @@ import {
   BusinessLocation,
 } from '../types/business';
 import { UploadImageRequest } from '../types/upload';
+import RNFS from 'react-native-fs';
 
 // Business registration form data interface
 export interface BusinessFormData {
@@ -68,6 +69,43 @@ export function useRegisterBusinessViewModel() {
     setFormData(prev => ({ ...prev, ...updates }));
   };
 
+  // ----------- file readiness helpers -----------
+  const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+  /**
+   * Wait until `RNFS.stat(uri)` succeeds and the file size is stable across
+   * two consecutive polls. Prevents uploading while the OS is still flushing
+   * the picked image to disk.
+   */
+  async function waitForFileReady(
+    uri: string,
+    opts?: { maxTries?: number; intervalMs?: number; minBytes?: number },
+  ): Promise<void> {
+    const maxTries = opts?.maxTries ?? 25; // ~3.75s at 150ms interval
+    const intervalMs = opts?.intervalMs ?? 150;
+    const minBytes = opts?.minBytes ?? 1;
+
+    let lastSize = -1;
+    for (let attempt = 0; attempt < maxTries; attempt++) {
+      try {
+        const stat = await RNFS.stat(uri); // exposes size/mtime/path
+        const sizeNow =
+          typeof stat.size === 'number' ? stat.size : Number(stat.size || 0);
+
+        if (sizeNow >= minBytes) {
+          if (sizeNow === lastSize) {
+            return; // stable size across two reads → file is ready
+          }
+          lastSize = sizeNow;
+        }
+      } catch {
+        // ignore; file might not exist yet
+      }
+      await sleep(intervalMs);
+    }
+    throw new Error('File is not ready yet. Please retry.');
+  }
+
   /**
    * Step 1: Create business with basic information
    */
@@ -119,6 +157,7 @@ export function useRegisterBusinessViewModel() {
 
   /**
    * Step 2: Upload business images
+   * NEW: Wait for file readiness before each upload.
    */
   const uploadBusinessImages = async (
     businessId: string,
@@ -147,6 +186,10 @@ export function useRegisterBusinessViewModel() {
       for (let i = 0; i < validImageUris.length; i++) {
         const uri = validImageUris[i];
 
+        // 0) Wait until the file is fully registered/stable on disk
+        console.log(`Waiting for file to be ready: [${i + 1}] ${uri}`);
+        await waitForFileReady(uri);
+
         // Extract filename from URI or create a default one
         const fileName = uri.split('/').pop() || `business_image_${i + 1}.jpg`;
 
@@ -164,8 +207,9 @@ export function useRegisterBusinessViewModel() {
             name: fileName,
             type: mimeType,
           },
-          type: 'business', // Use business type for upload
-          // No businessId needed for business uploads, but we could add it if the backend requires it
+          type: 'business',
+          // If your backend associates images to a business by ID, add it here:
+          // businessId,
         };
 
         console.log(

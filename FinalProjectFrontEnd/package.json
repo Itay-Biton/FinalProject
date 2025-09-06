@@ -32,10 +32,11 @@
     "react-native": "^0.80.2",
     "react-native-bootsplash": "^6.3.10",
     "react-native-config": "^1.5.5",
-    "react-native-contacts": "^8.0.5",
+    "react-native-contacts": "8.0.5",
     "react-native-element-dropdown": "^2.12.4",
+    "react-native-fs": "^2.20.0",
     "react-native-gesture-handler": "^2.27.2",
-    "react-native-image-crop-picker": "git+https://github.com/AviadKorakin/react-native-image-crop-picker.git",
+    "react-native-image-crop-picker": "^0.51.0",
     "react-native-image-picker": "^8.2.1",
     "react-native-keyboard-aware-scroll-view": "^0.9.5",
     "react-native-keyboard-controller": "^1.18.2",
@@ -75,7 +76,7 @@
     "patch-package": "^8.0.0",
     "prettier": "2.8.8",
     "react-native-svg-transformer": "^1.5.1",
-    "react-test-renderer": "^19.1.0",
+    "react-test-renderer": "19.1.0",
     "typescript": "5.0.4"
   },
   "engines": {

@@ -6,7 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "fake-data": "ts-node src/utils/fakeData.ts",
-    "play": "ts-node-dev src/server.ts"
+    "start": "ts-node-dev src/server.ts"
   },
   "keywords": [],
   "author": "",
@@ -20,12 +20,13 @@
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "firebase-admin": "^13.4.0",
+    "formdata-node": "^6.0.3",
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.16.5",
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
-    "node-appwrite": "^17.2.0",
+    "node-appwrite": "^18.0.0",
     "node-cron": "^4.2.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",

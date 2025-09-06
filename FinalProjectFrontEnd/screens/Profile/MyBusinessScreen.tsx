@@ -170,7 +170,7 @@ const MyBusinessScreen: React.FC = memo(() => {
 
   const handleScroll = useCallback(
     ({ nativeEvent }: any) => {
-      if (loadingMore) return;
+      if (loadingMore || loading) return;
 
       const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
       const paddingToBottom = 20;
@@ -182,7 +182,7 @@ const MyBusinessScreen: React.FC = memo(() => {
         loadMore();
       }
     },
-    [loadMore, loadingMore],
+    [loadMore, loading, loadingMore],
   );
 
   return (
